@@ -82,6 +82,17 @@ $ build/samtools/samtools sam2bam -Fpre_filter:F=2 -@184 -Obam -oout.bam in.sam
 -Fpre_filter:f=1                        Select flag bits (e.g., bit 1 is set)
 -Fpre_filter:F=2                        Select cleared flag bits (e.g., bit 2 is not set)
 </code></pre>
+
+<h3>
+<a id="sort-alignments-by-coordinate" class="anchor" href="#sort-alignments-by-coordinate" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Sort alignments by coordinate</h3>
+
+<pre><code>$ build/samtools/samtools sam2bam -Fsort_by_coordinate: -@184 -Obam -oout.bam in.sam
+</code></pre>
+
+<p>ommand-line options:</p>
+
+<pre><code>-Fsort_by_coordinate:      sort alignments by coordinate
+</code></pre>
       </section>
     </div>
 
