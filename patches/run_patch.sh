@@ -31,3 +31,4 @@ patch -p2 -d ${DIR} < ${SRC}/samtools.patch
 patch -p2 -d ${DIR} < ${SRC}/htslib.patch
 patch -p2 -d ${DIR} < ${SRC}/prefilter.patch
 patch -p2 -d ${DIR} < ${SRC}/hw_zlib.patch
+patch -p2 -d ${DIR} < ${SRC}/sort_by_coordinate.patch
