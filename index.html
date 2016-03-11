@@ -107,6 +107,18 @@ $ build/samtools/samtools sam2bam -@176 -Obam -oout.bam in.sam
 8             the number of threads that offload compression to the hardware accelerator
 176           (physical_cores - 1) * threads_per_core - ${HW_ZLIB} (e.g, 176 = (24 - 1) * 8 - 8)
 </code></pre>
+
+<h3>
+<a id="run-duplicate-marking-for-ibm-power8" class="anchor" href="#run-duplicate-marking-for-ibm-power8" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Run duplicate marking for IBM POWER8</h3>
+
+<pre><code>$ build/samtools/samtools sam2bam -Fibm_markdup:r -@176 -Obam -oout.bam in.sam
+</code></pre>
+
+<p>Command-line options:</p>
+
+<pre><code>-Fibm_markdup:                       Mark duplicates
+-Fibm_markdup:r                      Remove duplicates
+</code></pre>
       </section>
     </div>
 
