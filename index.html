@@ -93,6 +93,19 @@ $ build/samtools/samtools sam2bam -Fpre_filter:F=2 -@184 -Obam -oout.bam in.sam
 
 <pre><code>-Fsort_by_coordinate:      sort alignments by coordinate
 </code></pre>
+
+<h3>
+<a id="use-genwqe-compression-accelerator-on-ibm-power8" class="anchor" href="#use-genwqe-compression-accelerator-on-ibm-power8" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Use GenWQE compression accelerator on IBM POWER8</h3>
+
+<pre><code>$ export HW_ZLIB=8
+$ build/samtools/samtools sam2bam -@176 -Obam -oout.bam in.sam
+</code></pre>
+
+<p>Command-line options:</p>
+
+<pre><code>8             the number of threads that offload compression to the hardware accelerator
+176           (physical_cores - 1) * threads_per_core - ${HW_ZLIB} (e.g, 176 = (24 - 1) * 8 - 8)
+</code></pre>
       </section>
     </div>
 
