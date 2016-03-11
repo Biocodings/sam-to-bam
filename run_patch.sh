@@ -30,3 +30,4 @@ rsync -aq ${ORG}/htslib ${DIR}/
 patch -p2 -d ${DIR} < ${SRC}/samtools.patch
 patch -p2 -d ${DIR} < ${SRC}/htslib.patch
 patch -p2 -d ${DIR} < ${SRC}/prefilter.patch
+patch -p2 -d ${DIR} < ${SRC}/hw_zlib.patch
