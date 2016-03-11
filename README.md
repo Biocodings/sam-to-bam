@@ -7,4 +7,6 @@ A fast genome file format converter
 2. Run it
    `bash build.sh`
 
+## HOW TO RUN
+http://t-ogasawara.github.io/sam-to-bam/
 
