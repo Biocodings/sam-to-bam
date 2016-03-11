@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/prefilter/Makefile ../files/prefilter/Makefile
 --- 00_svn_r2/samtools-2015-08-19/prefilter/Makefile	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/prefilter/Makefile	2016-03-11 16:40:48.268843405 +0900
-@@ -0,0 +1,46 @@
++++ ../files/prefilter/Makefile	2016-03-11 16:52:54.149718775 +0900
+@@ -0,0 +1,47 @@
 +#     (C) Copyright IBM Corp. 2016
 +# 
 +#     Author: Takeshi Ogasawara, IBM Research - Tokyo
@@ -52,11 +52,12 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x
 +endif
 +CPPFLAGS = -I../samtools -I../htslib -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
 +LDFLAGS = -shared -Wl,-soname,$(PROGRAM).$(LIB_VERSION) -pthread
-+LDLIBS = ../htslib/libhts.a
++HTSDIR=../htslib
++-include $(HTSDIR)/htslib.mk
 +
 +LIB_VERSION = 1.0.0
 +PROGRAM = lib_pre_filter.so
-+LIB_OBJS = prefilter.o
++LIB_OBJS = prefilter.o $(HTSDIR)/libhts.a
 +
 +all: $(PROGRAM)
 +
