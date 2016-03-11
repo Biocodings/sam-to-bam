@@ -1,0 +1,243 @@
+# (C) Copyright IBM Corp. 2016
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/hw_zlib/genwqe_hw_zlib.c ../files/hw_zlib/genwqe_hw_zlib.c
+--- 00_svn_r2/samtools-2015-08-19/hw_zlib/genwqe_hw_zlib.c	1970-01-01 09:00:00.000000000 +0900
++++ ../files/hw_zlib/genwqe_hw_zlib.c	2016-03-11 11:05:48.768502611 +0900
+@@ -0,0 +1,108 @@
++#define HW_ZLIB
++
++#include <string.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <dlfcn.h>
++#include <zlib.h>
++#include "htslib/bgzf.h"
++/*
++static int (*p_hw_deflateInit2_)(z_streamp, int, int, int, int, int, const char *, int);
++static int (*p_hw_deflate)(z_streamp, int);
++static int (*p_hw_deflateReset)(z_streamp);
++*/
++int init_hw_zlib(hw_zlib_api_t *api) {
++  int rc = 0;
++  enum type { genwqe, capi, n_type};
++  enum type type_arr[n_type] = { genwqe, capi }; 
++  const char * type_name[n_type] = { "GENWQE", "CAPI" };
++  const char * const path = "/opt/genwqe/lib/genwqe/libz.so";
++  //const char * const echo = "/opt/genwqe/bin/genwqe_echo -vvv -c1 -A ";
++  const char * const echo = "/opt/genwqe/bin/genwqe_echo -c1 -A ";
++  //const char * const redir = "";
++  const char * const redir = " 1>/dev/null 2>/dev/null";
++  const int echo_len = strlen(echo);
++  char buf[echo_len+64+1];
++  int cardtype = -1;
++  strcpy(buf, echo);
++
++  // determine the card type
++  int i;
++  for (i=0; i<n_type; i++) {
++    //int ret = system("/opt/genwqe/bin/genwqe_echo -c1 1>/dev/null 2>/dev/null");
++    memcpy(&buf[echo_len], type_name[i], strlen(type_name[i]));
++    memcpy(&buf[echo_len + strlen(type_name[i])], redir, strlen(redir));
++    buf[echo_len + + strlen(type_name[i]) + strlen(redir)] = 0;
++    int ret = system(buf);
++    fprintf(stderr, "(I) %s (exit status %d)\n", buf, ret);
++    if (0 == ret) {
++      cardtype = type_arr[i];
++      break;
++    }
++  }
++  if (-1 == cardtype) {
++    fprintf(stderr, "(I) %s could not find any supported card\n", path);
++    rc = 1;
++  }
++
++  if (0 == rc) {
++    // set the environment variables
++
++    // https://github.com/ibm-genwqe/genwqe-user/wiki/Environment%20Variables
++    // ZLIB_DEFLATE_IMPL:
++    //  0x00: SW, 0x01: HW The last 4 bits are used to switch between the hard- and software-implementation. The upper bits are used to control some internal optimizations. Since some of those are only useful for certain use-cases, we did not enable them by default.
++    //  0x20: Keep file-handles/worker threads to the card open/alive, even if no stream is in use anymore
++    //  0x40: Useful for cases like Genomics, or filesystems where the dictionary is not used after the operation completed, e.g. Z_FULL_FLUSH, etc
++    //  0x80: Use polling mode, only for CAPI
++    if (0 != putenv("ZLIB_DEFLATE_IMPL=0x01")) {
++      perror("(E) setenv() for ZLIB_DEFLATE_IMPL failed: ");
++      rc = 1;
++    }
++    switch (cardtype) {
++    case genwqe:
++      if (0 != putenv("ZLIB_ACCELERATOR=GENWQE")) {
++        perror("(E) setenv() for ZLIB_ACCELERATOR=GENWQE failed: ");
++        rc = 1;
++      }
++      break;
++    case capi:
++      if (0 != putenv("ZLIB_ACCELERATOR=CAPI")) {
++        perror("(E) setenv() for ZLIB_ACCELERATOR=CAPI failed: ");
++        rc = 1;
++      }
++      break;
++    }
++  
++    if (0 == rc) {
++      void *handle = dlopen(path, RTLD_LAZY);
++      if (NULL == handle) {
++        fprintf(stderr, "(I) no %s found\n", path);
++        rc = 1;
++      } else {
++        char *e;
++        dlerror();
++        api->p_deflateInit2_ = dlsym(handle, "deflateInit2_");
++        if (NULL != (e = dlerror())) {
++          fprintf(stderr, "(E) %s does not provide deflateInit2_: %s\n", path, e);
++          rc = 1;
++        }
++        dlerror();
++        api->p_deflate = dlsym(handle, "deflate");
++        if (NULL != (e = dlerror())) {
++          fprintf(stderr, "(E) %s does not provide deflate: %s\n", path, e);
++          rc = 1;
++        }
++        dlerror();
++        api->p_deflateReset = dlsym(handle, "deflateReset");
++        if (NULL != (e = dlerror())) {
++          fprintf(stderr, "(E) %s does not provide deflateReset: %s\n", path, e);
++          rc = 1;
++        }
++      }
++    }
++  }
++  if (0 == rc) {
++    fprintf(stderr, "(I) IBM hardware zlib (%s) enabled\n", cardtype==capi ? "CAPI" : "GenWQE");
++  }
++  return rc;
++}
+diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/hw_zlib/Makefile ../files/hw_zlib/Makefile
+--- 00_svn_r2/samtools-2015-08-19/hw_zlib/Makefile	1970-01-01 09:00:00.000000000 +0900
++++ ../files/hw_zlib/Makefile	2016-03-11 11:06:37.781886494 +0900
+@@ -0,0 +1,108 @@
++# Makefile for samtools, utilities for the Sequence Alignment/Map format.
++#
++#    Copyright (C) 2008-2014 Genome Research Ltd.
++#    Portions copyright (C) 2010-2012 Broad Institute.
++#
++# Permission is hereby granted, free of charge, to any person obtaining a copy
++# of this software and associated documentation files (the "Software"), to deal
++# in the Software without restriction, including without limitation the rights
++# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++# copies of the Software, and to permit persons to whom the Software is
++# furnished to do so, subject to the following conditions:
++#
++# The above copyright notice and this permission notice shall be included in
++# all copies or substantial portions of the Software.
++#
++# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++# DEALINGS IN THE SOFTWARE.
++
++PLATFORM = $(shell uname -m)
++CC       = gcc
++CPPFLAGS =
++ifeq ($(PLATFORM), ppc64le)
++#CFLAGS   = -g -Wall -O0
++CFLAGS   = -g -Wall -O2 -mcpu=power8 -mtune=power8
++else
++CFLAGS   = -g -Wall -O2
++endif
++LDFLAGS  = 
++LIBS     = -ltcmalloc
++
++DFLAGS=     -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -D_CURSES_LIB=1
++LOBJS=      bam_aux.o bam.o bam_import.o sam.o \
++            sam_header.o bam_plbuf.o
++AOBJS=      bam_index.o bam_plcmd.o sam_view.o \
++            bam_cat.o bam_md.o bam_reheader.o bam_sort.o bedidx.o kprobaln.o \
++            bam_rmdup.o bam_rmdupse.o bam_mate.o bam_stat.o bam_color.o bam_sam2bam.o \
++            bamtk.o bam2bcf.o bam2bcf_indel.o errmod.o sample.o sam_opts.o \
++            cut_target.o phase.o bam2depth.o padding.o bedcov.o bamshuf.o \
++            faidx.o dict.o stats.o stats_isize.o bam_flags.o bam_split.o \
++            bam_tview.o bam_tview_curses.o bam_tview_html.o bam_lpileup.o \
++            bam_quickcheck.o
++
++SAMTOOLSDIR ?= ../samtools
++HTSDIR ?= ../htslib
++
++EXTRA_CPPFLAGS = $(DFLAGS) -I. -I$(SAMTOOLSDIR) -I$(HTSDIR)
++LIBCURSES=  -lcurses # -lXCurses
++
++prefix      = /usr/local
++exec_prefix = $(prefix)
++bindir      = $(exec_prefix)/bin
++mandir      = $(prefix)/share/man
++man1dir     = $(mandir)/man1
++
++MKDIR_P = mkdir -p
++INSTALL = install -p
++INSTALL_PROGRAM = $(INSTALL)
++INSTALL_DATA    = $(INSTALL) -m 644
++INSTALL_DIR     = $(MKDIR_P) -m 755
++
++
++PROGRAMS = libz_hw.so
++
++all: $(PROGRAMS)
++
++.SUFFIXES: .c .o .pico
++
++.c.o:
++	$(CC) $(CFLAGS) $(EXTRA_CPPFLAGS) $(CPPFLAGS) -c -o $@ $<
++
++.c.pico:
++	$(CC) $(CFLAGS) $(EXTRA_CPPFLAGS) $(CPPFLAGS) -c -fpic -o $@ $<
++
++LIB_VERSION = 0.1.0
++LIB_OBJS = genwqe_hw_zlib.o
++
++genwqe_hw_zlib.pico: 
++
++libz_hw.so: $(LIB_OBJS:.o=.pico)
++	$(CC) -shared -Wl,-soname,libhts.so.$(LIB_VERSION) -pthread $(LDFLAGS) -o $@ $(LIB_OBJS:.o=.pico) $(LDLIBS)
++
++
++mostlyclean: testclean
++	-rm -f *.o misc/*.o test/*.o test/*/*.o version.h
++
++clean: mostlyclean
++	-rm -f $(PROGRAMS) libbam.a $(BUILT_MISC_PROGRAMS) $(BUILT_TEST_PROGRAMS)
++
++distclean: clean
++	-rm -f TAGS
++
++clean-all: clean clean-htslib
++
++
++tags:
++	ctags -f TAGS *.[ch] misc/*.[ch]
++
++
++force:
++
++
++.PHONY: all check clean clean-all distclean force install
++.PHONY: lib mostlyclean tags test testclean
