@@ -65,4 +65,4 @@ cd ../samtools
 mkdir filter.d accelerator.d
 ln -s ${PWD}/../prefilter/lib_pre_filter.so filter.d/
 ln -s ${PWD}/../sort_by_coordinate/lib_sort_by_coordinate.so filter.d/
-ln -s ${PWD}/../hw_zlib/lib_hw_zlib.so accelerator.d/
+ln -s ${PWD}/../hw_zlib/libz_hw.so accelerator.d/
