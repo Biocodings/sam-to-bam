@@ -21,7 +21,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 ORG=./samtools-2015-08-19	# where samtools and htslib directories as of 2015-08-19 are
-SRC=./source/sam-to-bam		# sam-to-bam diff
+SRC=./source/sam-to-bam/patches	# sam-to-bam diff
 DIR=./build			# build dir
 rm -rf ${DIR}
 mkdir ${DIR}

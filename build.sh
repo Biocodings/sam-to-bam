@@ -26,7 +26,7 @@ cd ../..
 #
 echo Create the source files
 #
-${SRC}/sam-to-bam/run_patch.sh
+${SRC}/sam-to-bam/patches/run_patch.sh
 
 #
 echo Build the program
