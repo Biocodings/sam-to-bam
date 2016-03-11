@@ -103,7 +103,8 @@ $ build/samtools/samtools sam2bam -@176 -Obam -oout.bam in.sam
 
 <p>Command-line options:</p>
 
-<pre><code>8             the number of threads that offload compression to the hardware accelerator
+<pre><code>HW_ZLIB       Non-zero HW_ZLIB enables H/W acceleration of compression if the accelerator is available in the system
+8             the number of threads that offload compression to the hardware accelerator
 176           (physical_cores - 1) * threads_per_core - ${HW_ZLIB} (e.g, 176 = (24 - 1) * 8 - 8)
 </code></pre>
       </section>
