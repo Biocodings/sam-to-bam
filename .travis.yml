@@ -21,9 +21,7 @@ install:
  - source/sam-to-bam/patches/run_patch.sh
  - cd build
 script:
- - cd htslib
- - make
- - cd ../samtools
+ - cd samtools
  - make
  - cd ../prefilter
  - make
