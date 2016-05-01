@@ -17,6 +17,7 @@ install:
  - echo Create the source files
  - source/sam-to-bam/patches/run_patch.sh
  - cd source/sam-to-bam
+ - ls -F
 script:
  - cd samtools
  - make
