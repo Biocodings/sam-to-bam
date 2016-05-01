@@ -5,8 +5,8 @@ install:
  - mkdir -p source
  - echo Download the files
  - cd samtools-2015-08-19
- - git clone git://github/samtools/samtools.git
- - git clone git://github/samtools/htslib.git
+ - git clone git://github.com/samtools/samtools.git
+ - git clone git://github.com/samtools/htslib.git
  - cd ../source
  - mv ../sam-to-bam .
  - cd ../samtools-2015-08-19/samtools
