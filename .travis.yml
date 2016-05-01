@@ -3,6 +3,7 @@ install:
  - cd ..
  - mkdir -p samtools-2015-08-19
  - mkdir -p source
+ - mkdir -p build
  - echo Download the files
  - cd samtools-2015-08-19
  - git clone git://github.com/samtools/samtools.git
@@ -16,8 +17,7 @@ install:
  - cd ../..
  - echo Create the source files
  - source/sam-to-bam/patches/run_patch.sh
- - cd source/sam-to-bam
- - ls -F
+ - cd build
 script:
  - cd samtools
  - make
