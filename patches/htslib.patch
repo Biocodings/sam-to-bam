@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c ../files/htslib/bgzf.c
 --- 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/bgzf.c	2016-03-10 13:11:03.279126531 +0900
++++ ../files/htslib/bgzf.c	2016-05-01 17:36:06.671820620 +0900
 @@ -22,6 +22,7 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
@@ -70,9 +70,9 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +#elif	defined(__x86_64__)
 +#define SMT		2
 +#define CPU_MAIN()	0
-+#define CPU_WRITE()	(N_CORES())
-+#define CPU_SYNC()	(N_CORES())
-+#define CPU_ZLIB(i)	(1 + ((i)/(N_CORES()-1))*(N_CORES()) + (i)%(N_CORES()-1))
++#define CPU_WRITE()	(n_physical_cores)
++#define CPU_SYNC()	(n_physical_cores)
++#define CPU_ZLIB(i)	(1 + ((i)/(n_physical_cores-1))*(n_physical_cores) + (i)%(n_physical_cores-1))
 +#endif
 +#endif
 +#if	defined(__powerpc64__)
