@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/t-ogasawara/sam-to-bam.svg?branch=master)](https://travis-ci.org/t-ogasawara/sam-to-bam)
 # sam-to-bam
 A fast genome file format converter
 
