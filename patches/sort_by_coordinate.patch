@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/sort_by_coordinate/Makefile ../files/sort_by_coordinate/Makefile
 --- 00_svn_r2/samtools-2015-08-19/sort_by_coordinate/Makefile	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/sort_by_coordinate/Makefile	2016-03-11 18:07:05.310765801 +0900
-@@ -0,0 +1,47 @@
++++ ../files/sort_by_coordinate/Makefile	2016-06-24 10:30:07.703545118 +0900
+@@ -0,0 +1,51 @@
 +#     (C) Copyright IBM Corp. 2016
 +# 
 +#     Author: Takeshi Ogasawara, IBM Research - Tokyo
@@ -44,7 +44,11 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x
 +# DEALINGS IN THE SOFTWARE.
 +
 +PLATFORM = $(shell uname -m)
++ifeq ($(wildcard /opt/at9.0),)
 +CC       = gcc
++else
++CC       = /opt/at9.0/bin/gcc
++endif
 +ifeq ($(PLATFORM), ppc64le)
 +CFLAGS   = -fpic -g -Wall -O2 -mcpu=power8 -mtune=power8
 +else

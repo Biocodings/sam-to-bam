@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c ../files/htslib/bgzf.c
 --- 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/bgzf.c	2016-05-01 17:36:06.671820620 +0900
++++ ../files/htslib/bgzf.c	2016-06-14 10:49:05.000000000 +0900
 @@ -22,6 +22,7 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
@@ -28,7 +28,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  
  #include <config.h>
  
-@@ -31,11 +32,68 @@
+@@ -31,11 +32,70 @@
  #include <errno.h>
  #include <unistd.h>
  #include <assert.h>
@@ -51,6 +51,8 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +} cpu_map_t;
 +#define CPU_SET2(i, set)        {CPU_SET(mt->cpu_map->map[i], set);}
 +
++static struct timespec throttle;
++
 +static int n_physical_cores_valid = 0;
 +static int n_physical_cores;
 +//#define N_SAMPARSER_CORES()	(cpu_map->hts_proc_offset/SMT - 1/* core0 */)
@@ -60,7 +62,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +//#define CPU_OFST()	(cpu_map->hts_proc_offset - SMT)
 +#define SMT		8
 +#define CPU_MAIN()	0
-+#define CPU_WRITE()	1
++#define CPU_WRITE()	(n_physical_cores*SMT-1)
 +#define CPU_SYNC()	2
 +#define CPU_ZLIB_0(i)	(SMT + SMT*((i)%(N_SAMPARSER_CORES())) + (i)/(N_SAMPARSER_CORES()))
 +//#define CPU_HWZLIB(i)	(SMT + SMT*((mt->n_threads+(i))%(n_physical_cores-1)) + (mt->n_threads+(i))/(n_physical_cores-1))
@@ -76,7 +78,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +#endif
 +#endif
 +#if	defined(__powerpc64__)
-+#include <powerpc64le-linux-gnu/sys/platform/ppc.h>
++#include <sys/platform/ppc.h>
 +#define HW_ZLIB
 +#define IN_SPIN_WAIT_LOOP()		__ppc_set_ppr_low()
 +#define FINISH_SPIN_WAIT_LOOP()		__ppc_set_ppr_med()
@@ -87,7 +89,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +#define FINISH_SPIN_WAIT_LOOP()
 +#define FINISH_SPIN_WAIT_LOOP2()
 +#else
-+#define IN_FPIN_WAIT_LOOP()	usleep(1)
++#define IN_FPIN_WAIT_LOOP()	nanosleep(&throttle, NULL)
 +#define FINISH_SPIN_WAIT_LOOP()
 +#define FINISH_SPIN_WAIT_LOOP2()
 +#endif
@@ -97,7 +99,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  #include "htslib/bgzf.h"
  #include "htslib/hfile.h"
  
-@@ -108,6 +166,7 @@ static inline void packInt32(uint8_t *bu
+@@ -108,6 +168,7 @@ static inline void packInt32(uint8_t *bu
      buffer[3] = value >> 24;
  }
  
@@ -105,7 +107,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static BGZF *bgzf_read_init(hFILE *hfpr)
  {
      BGZF *fp;
-@@ -130,6 +189,12 @@ static BGZF *bgzf_read_init(hFILE *hfpr)
+@@ -130,6 +191,12 @@ static BGZF *bgzf_read_init(hFILE *hfpr)
      return fp;
  }
  
@@ -118,7 +120,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  // get the compress level from the mode string: compress_level==-1 for the default level, -2 plain uncompressed
  static int mode2level(const char *__restrict mode)
  {
-@@ -153,6 +218,10 @@ static BGZF *bgzf_write_init(const char 
+@@ -153,6 +220,10 @@ static BGZF *bgzf_write_init(const char 
      }
      fp->is_compressed = 1;
      fp->uncompressed_block = malloc(BGZF_MAX_BLOCK_SIZE);
@@ -129,7 +131,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      fp->compressed_block = malloc(BGZF_MAX_BLOCK_SIZE);
      fp->compress_level = compress_level < 0? Z_DEFAULT_COMPRESSION : compress_level; // Z_DEFAULT_COMPRESSION==-1
      if (fp->compress_level > 9) fp->compress_level = Z_DEFAULT_COMPRESSION;
-@@ -229,6 +298,60 @@ BGZF *bgzf_hopen(hFILE *hfp, const char 
+@@ -229,6 +300,60 @@ BGZF *bgzf_hopen(hFILE *hfp, const char 
      return fp;
  }
  
@@ -190,7 +192,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static int bgzf_compress(void *_dst, int *dlen, void *src, int slen, int level)
  {
      uint32_t crc;
-@@ -285,6 +408,7 @@ static int deflate_block(BGZF *fp, int b
+@@ -285,6 +410,7 @@ static int deflate_block(BGZF *fp, int b
          return -1;
      }
      fp->block_offset = 0;
@@ -198,7 +200,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      return comp_size;
  }
  
-@@ -585,19 +709,312 @@ typedef struct {
+@@ -585,19 +711,312 @@ typedef struct {
      struct bgzf_mtaux_t *mt;
      void *buf;
      int i, errcode, toproc, compress_level;
@@ -512,7 +514,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static int worker_aux(worker_t *w)
  {
      int i, stop = 0;
-@@ -612,7 +1029,7 @@ static int worker_aux(worker_t *w)
+@@ -612,7 +1031,7 @@ static int worker_aux(worker_t *w)
      w->errcode = 0;
      for (i = w->i; i < w->mt->curr; i += w->mt->n_threads) {
          int clen = BGZF_MAX_BLOCK_SIZE;
@@ -521,7 +523,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
              w->errcode |= BGZF_ERR_ZLIB;
          memcpy(w->mt->blk[i], w->buf, clen);
          w->mt->len[i] = clen;
-@@ -620,40 +1037,521 @@ static int worker_aux(worker_t *w)
+@@ -620,40 +1039,523 @@ static int worker_aux(worker_t *w)
      __sync_fetch_and_add(&w->mt->proc_cnt, 1);
      return 0;
  }
@@ -781,6 +783,8 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +    if (no_cpuaffinity_str) {
 +      disable_cpuaffinity = 1; 
 +    }
++    throttle.tv_sec = 0;
++    throttle.tv_nsec = 500;
 +#if defined(__x86_64__)
 +    disable_cpuaffinity = 1; 
 +/*
@@ -1049,7 +1053,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      fp->mt = mt;
      return 0;
  }
-@@ -666,16 +1564,66 @@ static void mt_destroy(mtaux_t *mt)
+@@ -666,16 +1568,66 @@ static void mt_destroy(mtaux_t *mt)
      mt->done = 1; mt->proc_cnt = 0;
      pthread_cond_broadcast(&mt->cv);
      pthread_mutex_unlock(&mt->lock);
@@ -1117,7 +1121,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static void mt_queue(BGZF *fp)
  {
      mtaux_t *mt = fp->mt;
-@@ -685,7 +1633,21 @@ static void mt_queue(BGZF *fp)
+@@ -685,7 +1637,21 @@ static void mt_queue(BGZF *fp)
      fp->block_offset = 0;
      ++mt->curr;
  }
@@ -1139,7 +1143,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static int mt_flush_queue(BGZF *fp)
  {
      int i;
-@@ -710,12 +1672,18 @@ static int mt_flush_queue(BGZF *fp)
+@@ -710,12 +1676,18 @@ static int mt_flush_queue(BGZF *fp)
      mt->curr = 0;
      return (fp->errcode == 0)? 0 : -1;
  }
@@ -1158,7 +1162,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      }
      else return bgzf_flush(fp);
  }
-@@ -739,8 +1707,13 @@ int bgzf_flush(BGZF *fp)
+@@ -739,8 +1711,13 @@ int bgzf_flush(BGZF *fp)
      if (!fp->is_write) return 0;
  #ifdef BGZF_MT
      if (fp->mt) {
@@ -1172,7 +1176,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      }
  #endif
      while (fp->block_offset > 0) {
-@@ -788,6 +1761,100 @@ ssize_t bgzf_write(BGZF *fp, const void 
+@@ -788,6 +1765,100 @@ ssize_t bgzf_write(BGZF *fp, const void 
      }
      return length - remaining;
  }
@@ -1566,7 +1570,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
    @abstract  Set .fai filename for a file opened for reading
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/htslib/sam.h ../files/htslib/htslib/sam.h
 --- 00_svn_r2/samtools-2015-08-19/htslib/htslib/sam.h	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/htslib/sam.h	2016-02-16 10:34:00.521517873 +0900
++++ ../files/htslib/htslib/sam.h	2016-06-21 17:00:11.000000000 +0900
 @@ -27,6 +27,8 @@ DEALINGS IN THE SOFTWARE.  */
  #define HTSLIB_SAM_H
  
@@ -1576,22 +1580,24 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  #include "hts.h"
  
  #ifdef __cplusplus
-@@ -364,6 +366,83 @@ int sam_index_build2(const char *fn, con
+@@ -364,6 +366,85 @@ int sam_index_build2(const char *fn, con
      int sam_read1(samFile *fp, bam_hdr_t *h, bam1_t *b);
      int sam_write1(samFile *fp, const bam_hdr_t *h, const bam1_t *b);
  
 +typedef struct bam_vaddr {
 +  union {
-+    uint64_t ptr__:63;
-+
++    struct {
++      uint64_t ptr__:63;
++      int external__:1;
++    };
 +    struct {
 +      uint32_t seqid__:32;
 +      uint32_t offset__:23;
 +      uint32_t fd__:8;
++      int external__:1;
 +    } __block__;
 +  };
 +
-+  int external__:1;
 +} bam_vaddr_t;
 +
 +static inline int is_bam_vaddr_external(bam_vaddr_t *bamva) {
@@ -1660,7 +1666,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      /*************************************
       *** Manipulating auxiliary fields ***
       *************************************/
-@@ -450,4 +529,5 @@ typedef struct __bam_mplp_t *bam_mplp_t;
+@@ -450,4 +531,5 @@ typedef struct __bam_mplp_t *bam_mplp_t;
  }
  #endif
  
@@ -1672,8 +1678,19 @@ Binary files 00_svn_r2/samtools-2015-08-19/htslib/knetfile.o and ../files/htslib
 Binary files 00_svn_r2/samtools-2015-08-19/htslib/kstring.o and ../files/htslib/kstring.o differ
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/Makefile ../files/htslib/Makefile
 --- 00_svn_r2/samtools-2015-08-19/htslib/Makefile	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/Makefile	2016-02-18 09:51:54.851097584 +0900
-@@ -28,10 +28,20 @@ RANLIB = ranlib
++++ ../files/htslib/Makefile	2016-06-24 10:29:46.919806377 +0900
+@@ -22,16 +22,30 @@
+ # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ # DEALINGS IN THE SOFTWARE.
+ 
+-CC     = gcc
++ifeq ($(wildcard /opt/at9.0),)
++CC       = gcc
++else
++CC       = /opt/at9.0/bin/gcc
++endif
+ AR     = ar
+ RANLIB = ranlib
  
  CPPFLAGS =
  # TODO: probably update cram code to make it compile cleanly with -Wc++-compat
@@ -1695,7 +1712,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  
  # For now these don't work too well as samtools also needs to know to
  # add -lbz2 and -llzma if linking against the static libhts.a library.
-@@ -182,6 +192,8 @@ LIBHTS_OBJS = \
+@@ -182,6 +196,8 @@ LIBHTS_OBJS = \
  	cram/vlen.o \
  	cram/zfio.o
  
@@ -1704,7 +1721,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  cram_h = cram/cram.h $(cram_samtools_h) $(cram_sam_header_h) $(cram_structs_h) $(cram_io_h) cram/cram_encode.h cram/cram_decode.h cram/cram_stats.h cram/cram_codecs.h cram/cram_index.h $(htslib_cram_h)
  cram_io_h = cram/cram_io.h $(cram_misc_h)
  cram_misc_h = cram/misc.h cram/os.h
-@@ -403,3 +415,5 @@ force:
+@@ -403,3 +419,5 @@ force:
  .PHONY: maintainer-clean mostlyclean print-version tags test testclean
  .PHONY: clean-so install-so
  .PHONY: clean-dylib install-dylib
