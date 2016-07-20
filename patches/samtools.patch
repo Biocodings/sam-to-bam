@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-07-20 17:12:04.976046260 +0900
-@@ -0,0 +1,7444 @@
++++ ../files/samtools/bam_sam2bam.c	2016-07-20 17:37:03.789205546 +0900
+@@ -0,0 +1,7445 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -136,6 +136,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x
 +#define CPU_BAMCOPY(i)  (1 + ((n_line_splitter+n_sam_parser+i)/(n_physical_cores-1))*(n_physical_cores) + (n_line_splitter+n_sam_parser+i)%(n_physical_cores-1))
 +#define CPU_HASH(i)	(1 + ((n_line_splitter+n_sam_parser+n_bam_copier+i)/(n_physical_cores-1))*(n_physical_cores) + (n_line_splitter+n_sam_parser+n_bam_copier+i)%(n_physical_cores-1))
 +#define CPU_MATEFIND(i)	(i)
++#define CPU_SAMSORT(i)	(i)
 +
 +#endif
 +
