@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c ../files/htslib/bgzf.c
 --- 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/bgzf.c	2016-07-08 11:43:33.000000000 +0900
++++ ../files/htslib/bgzf.c	2016-09-12 17:22:10.625870456 +0900
 @@ -22,6 +22,7 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
@@ -524,7 +524,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
              w->errcode |= BGZF_ERR_ZLIB;
          memcpy(w->mt->blk[i], w->buf, clen);
          w->mt->len[i] = clen;
-@@ -620,40 +1040,523 @@ static int worker_aux(worker_t *w)
+@@ -620,40 +1040,529 @@ static int worker_aux(worker_t *w)
      __sync_fetch_and_add(&w->mt->proc_cnt, 1);
      return 0;
  }
@@ -743,7 +743,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +static mtaux_t *mt = NULL;
 +static int disable_cpuaffinity = 0;
 +
-+int bgzf_mt_3(BGZF *fp, int n_threads, int n_sub_blks, char *fn, void *_cpu_map)
++int bgzf_mt_3(BGZF *fp, int n_sub_blks, char *fn, void *_cpu_map)
 +{
 +    cpu_map_t * const cpu_map = (cpu_map_t *)_cpu_map;
 +    pthread_attr_t attr;
@@ -776,7 +776,11 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 -    mtaux_t *mt;
 +    cpu_map_t *const cpu_map = (cpu_map_t*)_cpu_map;
      pthread_attr_t attr;
++#if defined(ASYNC_FLUSH)
++    if (!fp->is_write || fp->mt) return -1;
++#else
      if (!fp->is_write || fp->mt || n_threads <= 1) return -1;
++#endif
      mt = (mtaux_t*)calloc(1, sizeof(mtaux_t));
 +#if defined(ASYNC_FLUSH)
 +{
@@ -860,6 +864,8 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +    }
 +#endif
 +#endif
++    n_threads = cpu_map->use_nproc - SMT /* core0 is dedicated to main & sync threads */ - 1 /* the last thread on coreN-1 is dedicated to write thread */
++    		- hw_zlib;
      mt->n_threads = n_threads;
 -    mt->n_blks = n_threads * n_sub_blks;
 +    mt->n_blks = (n_threads + hw_zlib) * n_sub_blks;
@@ -1054,7 +1060,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      fp->mt = mt;
      return 0;
  }
-@@ -666,16 +1569,67 @@ static void mt_destroy(mtaux_t *mt)
+@@ -666,16 +1575,67 @@ static void mt_destroy(mtaux_t *mt)
      mt->done = 1; mt->proc_cnt = 0;
      pthread_cond_broadcast(&mt->cv);
      pthread_mutex_unlock(&mt->lock);
@@ -1123,12 +1129,12 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static void mt_queue(BGZF *fp)
  {
      mtaux_t *mt = fp->mt;
-@@ -685,7 +1639,21 @@ static void mt_queue(BGZF *fp)
+@@ -685,7 +1645,21 @@ static void mt_queue(BGZF *fp)
      fp->block_offset = 0;
      ++mt->curr;
  }
 +#endif
-+
+ 
 +#if defined(ASYNC_FLUSH)
 +static int mt_flush_queue2(BGZF *fp)
 +{
@@ -1138,14 +1144,14 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +      IN_SPIN_WAIT_LOOP();
 +    }
 +    FINISH_SPIN_WAIT_LOOP();
- 
++
 +    return 0;
 +}
 +#else
  static int mt_flush_queue(BGZF *fp)
  {
      int i;
-@@ -710,12 +1678,18 @@ static int mt_flush_queue(BGZF *fp)
+@@ -710,12 +1684,18 @@ static int mt_flush_queue(BGZF *fp)
      mt->curr = 0;
      return (fp->errcode == 0)? 0 : -1;
  }
@@ -1164,7 +1170,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      }
      else return bgzf_flush(fp);
  }
-@@ -739,8 +1713,13 @@ int bgzf_flush(BGZF *fp)
+@@ -739,8 +1719,13 @@ int bgzf_flush(BGZF *fp)
      if (!fp->is_write) return 0;
  #ifdef BGZF_MT
      if (fp->mt) {
@@ -1178,7 +1184,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      }
  #endif
      while (fp->block_offset > 0) {
-@@ -788,6 +1767,100 @@ ssize_t bgzf_write(BGZF *fp, const void 
+@@ -788,6 +1773,100 @@ ssize_t bgzf_write(BGZF *fp, const void 
      }
      return length - remaining;
  }
@@ -3524,7 +3530,7 @@ Binary files 00_svn_r2/samtools-2015-08-19/htslib/hfile_net.o and ../files/htsli
 Binary files 00_svn_r2/samtools-2015-08-19/htslib/hfile.o and ../files/htslib/hfile.o differ
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/hts.c ../files/htslib/hts.c
 --- 00_svn_r2/samtools-2015-08-19/htslib/hts.c	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/hts.c	2016-02-22 21:00:44.110910000 +0900
++++ ../files/htslib/hts.c	2016-09-12 17:07:21.031053039 +0900
 @@ -46,6 +46,74 @@ DEALINGS IN THE SOFTWARE.  */
  #if KS_BGZF
      // bgzf now supports gzip-compressed files, the gzFile branch can be removed
@@ -3618,26 +3624,27 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +{
 +  return bgzf_init_accelerator();
 +}
-+int hts_set_threads_2(htsFile *fp, int n, int n_blk, void *cpu_map)
++int hts_set_threads_2(htsFile *fp, int n_blk, void *cpu_map)
  {
      if (fp->format.compression == bgzf) {
 -        return bgzf_mt(fp->fp.bgzf, n, 256);
-+        return bgzf_mt(fp->fp.bgzf, n, n_blk, fp->fn, cpu_map);
++        return bgzf_mt(fp->fp.bgzf, /* n_threads */ 0, n_blk, fp->fn, cpu_map);
      } else if (fp->format.format == cram) {
-         return hts_set_opt(fp, CRAM_OPT_NTHREADS, n);
-     }
-     else return 0;
- }
-+int hts_set_threads_3(htsFile *fp, int n, int n_blk, void *cpu_map)
-+{
-+    if (fp->format.compression == bgzf) {
-+        return bgzf_mt_3(fp->fp.bgzf, n, n_blk, fp->fn, cpu_map);
+-        return hts_set_opt(fp, CRAM_OPT_NTHREADS, n);
++        return hts_set_opt(fp, CRAM_OPT_NTHREADS, /* n_threads */0);
 +    }
 +    else return 0;
 +}
++int hts_set_threads_3(htsFile *fp, int n_blk, void *cpu_map)
++{
++    if (fp->format.compression == bgzf) {
++        return bgzf_mt_3(fp->fp.bgzf, n_blk, fp->fn, cpu_map);
+     }
+     else return 0;
+ }
 +int hts_set_threads(htsFile *fp, int n, void *cpu_map)
 +{
-+    return hts_set_threads_2(fp, n, 256, cpu_map);
++    return hts_set_threads_2(fp, 256, cpu_map);
 +}
  
  int hts_set_fai_filename(htsFile *fp, const char *fn_aux)
@@ -3671,7 +3678,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
                  m = m? m<<1 : 16;
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/htslib/bgzf.h ../files/htslib/htslib/bgzf.h
 --- 00_svn_r2/samtools-2015-08-19/htslib/htslib/bgzf.h	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/htslib/bgzf.h	2016-02-22 21:00:44.110910000 +0900
++++ ../files/htslib/htslib/bgzf.h	2016-09-12 17:06:50.896431843 +0900
 @@ -38,6 +38,8 @@
  extern "C" {
  #endif
@@ -3708,7 +3715,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +    ssize_t bgzf_write2(BGZF *fp, const bam_vaddr_t bamva, size_t length, int mark_dup);
 +    int bam_write3(BGZF *fp, bam1_t *b);
 +    ssize_t bgzf_write3(BGZF *fp, bam1_t *b);
-+    int bgzf_mt_3(BGZF *fp, int n_threads, int n_sub_blks, char *fn, void *cpu_map);
++    int bgzf_mt_3(BGZF *fp, int n_sub_blks, char *fn, void *cpu_map);
 +#endif
  
      /**
@@ -3757,15 +3764,15 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  #endif
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/htslib/hts.h ../files/htslib/htslib/hts.h
 --- 00_svn_r2/samtools-2015-08-19/htslib/htslib/hts.h	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/htslib/hts.h	2016-02-22 21:00:44.110910000 +0900
++++ ../files/htslib/htslib/hts.h	2016-09-12 16:44:51.289019867 +0900
 @@ -374,7 +374,10 @@ char **hts_readlist(const char *fn, int 
    @return    0 for success, or negative if an error occurred.
    @notes     THIS THREADING API IS LIKELY TO CHANGE IN FUTURE.
  */
 -int hts_set_threads(htsFile *fp, int n);
 +int hts_set_threads(htsFile *fp, int n, void *cpu_map);
-+int hts_set_threads_2(htsFile *fp, int n, int n_blk, void *cpu_map);
-+int hts_set_threads_3(htsFile *fp, int n, int n_blk, void *cpu_map);
++int hts_set_threads_2(htsFile *fp, int n_blk, void *cpu_map);
++int hts_set_threads_3(htsFile *fp, int n_blk, void *cpu_map);
 +int hts_init_accelerator(void);
  
  /*!

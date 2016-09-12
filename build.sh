@@ -54,7 +54,7 @@ ${SRC}/sam-to-bam/patches/run_patch.sh
 echo Build the program
 #
 cd ${BLD}/samtools
-make
+make samtools
 cd ../prefilter
 make
 cd ../hw_zlib
