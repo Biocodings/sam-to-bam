@@ -3887,8 +3887,8 @@ Binary files 00_svn_r2/samtools-2015-08-19/htslib/knetfile.o and ../files/htslib
 Binary files 00_svn_r2/samtools-2015-08-19/htslib/kstring.o and ../files/htslib/kstring.o differ
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/htslib/Makefile ../files/htslib/Makefile
 --- 00_svn_r2/samtools-2015-08-19/htslib/Makefile	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/Makefile	2016-06-24 10:29:46.919806377 +0900
-@@ -22,16 +22,30 @@
++++ ../files/htslib/Makefile	2016-09-12 17:58:48.121247009 +0900
+@@ -22,13 +22,23 @@
  # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  # DEALINGS IN THE SOFTWARE.
  
@@ -3913,15 +3913,8 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +endif
  EXTRA_CFLAGS_PIC = -fpic
  LDFLAGS  =
-+ifeq ($(PLATFORM), ppc64le)
-+LDLIBS   = libzEDC.a
-+else
  LDLIBS   =
-+endif
- 
- # For now these don't work too well as samtools also needs to know to
- # add -lbz2 and -llzma if linking against the static libhts.a library.
-@@ -182,6 +196,8 @@ LIBHTS_OBJS = \
+@@ -182,6 +192,8 @@ LIBHTS_OBJS = \
  	cram/vlen.o \
  	cram/zfio.o
  
@@ -3930,7 +3923,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  cram_h = cram/cram.h $(cram_samtools_h) $(cram_sam_header_h) $(cram_structs_h) $(cram_io_h) cram/cram_encode.h cram/cram_decode.h cram/cram_stats.h cram/cram_codecs.h cram/cram_index.h $(htslib_cram_h)
  cram_io_h = cram/cram_io.h $(cram_misc_h)
  cram_misc_h = cram/misc.h cram/os.h
-@@ -403,3 +419,5 @@ force:
+@@ -403,3 +415,5 @@ force:
  .PHONY: maintainer-clean mostlyclean print-version tags test testclean
  .PHONY: clean-so install-so
  .PHONY: clean-dylib install-dylib
