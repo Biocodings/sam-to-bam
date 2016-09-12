@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/prefilter/Makefile ../files/prefilter/Makefile
 --- 00_svn_r2/samtools-2015-08-19/prefilter/Makefile	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/prefilter/Makefile	2016-06-24 10:29:07.511301757 +0900
++++ ../files/prefilter/Makefile	2016-09-12 17:53:11.165482689 +0900
 @@ -0,0 +1,52 @@
 +#     (C) Copyright IBM Corp. 2016
 +# 
@@ -68,7 +68,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x
 +
 +prefilter.o: ../samtools/bam_sam2bam.h
 +
-+$(PROGRAM): $(LIB_OBJS) $(HTSDIR)/libhts.so
++$(PROGRAM): $(LIB_OBJS) # $(HTSDIR)/libhts.so
 +	$(CC) $(LDFLAGS) -o $@ $(LIB_OBJS) $(HTSDIR)/*.pico
 +
 +clean: 
