@@ -52,7 +52,12 @@
 <h3>
 <a id="convert-the-file-format-from-sam-to-bam" class="anchor" href="#convert-the-file-format-from-sam-to-bam" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Convert the file format from SAM to BAM</h3>
 
-<pre><code>$ build/samtools/samtools sam2bam -Obam -oout.bam in.sam
+<pre><code>$ build/samtools/samtools sam2bam -oout.bam in.sam
+</code></pre>
+
+<p><em>Preview of a new feature - process multiple SAM files without a separate merge step (the performance will be improved in a future release)</em></p>
+
+<pre><code>$ build/samtools/samtools sam2bam -oout.bam in1.sam in2.sam in3.sam ...
 </code></pre>
 
 <p>Command-line options:</p>
@@ -64,12 +69,12 @@ in.sam　　      input SAM file name
 <h3>
 <a id="select-alignments-while-converting-the-file-format-from-sam-to-bam" class="anchor" href="#select-alignments-while-converting-the-file-format-from-sam-to-bam" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Select alignments while converting the file format from SAM to BAM</h3>
 
-<pre><code>$ build/samtools/samtools sam2bam -Fpre_filter:s=20:5000000-60000000 -Obam -oout.bam in.sam
-$ build/samtools/samtools sam2bam -Fpre_filter:r=H06HD.2 -Obam -oout.bam in.sam
-$ build/samtools/samtools sam2bam -Fpre_filter:l=Solexa-135852 -Obam -oout.bam in.sam
-$ build/samtools/samtools sam2bam -Fpre_filter:q=12 -Obam -oout.bam in.sam
-$ build/samtools/samtools sam2bam -Fpre_filter:f=1 -Obam -oout.bam in.sam
-$ build/samtools/samtools sam2bam -Fpre_filter:F=2 -Obam -oout.bam in.sam
+<pre><code>$ build/samtools/samtools sam2bam -Fpre_filter:s=20:5000000-60000000 -oout.bam in.sam
+$ build/samtools/samtools sam2bam -Fpre_filter:r=H06HD.2 -oout.bam in.sam
+$ build/samtools/samtools sam2bam -Fpre_filter:l=Solexa-135852 -oout.bam in.sam
+$ build/samtools/samtools sam2bam -Fpre_filter:q=12 -oout.bam in.sam
+$ build/samtools/samtools sam2bam -Fpre_filter:f=1 -oout.bam in.sam
+$ build/samtools/samtools sam2bam -Fpre_filter:F=2 -oout.bam in.sam
 </code></pre>
 
 <p>Command-line options:</p>
@@ -85,7 +90,7 @@ $ build/samtools/samtools sam2bam -Fpre_filter:F=2 -Obam -oout.bam in.sam
 <h3>
 <a id="sort-alignments-by-coordinate" class="anchor" href="#sort-alignments-by-coordinate" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Sort alignments by coordinate</h3>
 
-<pre><code>$ build/samtools/samtools sam2bam -Fsort_by_coordinate: -Obam -oout.bam in.sam
+<pre><code>$ build/samtools/samtools sam2bam -Fsort_by_coordinate: -oout.bam in.sam
 </code></pre>
 
 <p>Command-line options:</p>
@@ -101,7 +106,7 @@ $ build/samtools/samtools sam2bam -Fpre_filter:F=2 -Obam -oout.bam in.sam
 2. A GenWQE compression card is installed on the system.</p>
 
 <pre><code>$ export HW_ZLIB=8
-$ build/samtools/samtools sam2bam -Obam -oout.bam in.sam
+$ build/samtools/samtools sam2bam -oout.bam in.sam
 </code></pre>
 
 <p>Command-line options:</p>
@@ -113,7 +118,7 @@ $ build/samtools/samtools sam2bam -Obam -oout.bam in.sam
 <h3>
 <a id="run-duplicate-marking-for-ibm-power8" class="anchor" href="#run-duplicate-marking-for-ibm-power8" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Run duplicate marking for IBM POWER8</h3>
 
-<pre><code>$ build/samtools/samtools sam2bam -Fibm_markdup:r -Obam -oout.bam in.sam
+<pre><code>$ build/samtools/samtools sam2bam -Fibm_markdup:r -oout.bam in.sam
 </code></pre>
 
 <p>Command-line options:</p>
