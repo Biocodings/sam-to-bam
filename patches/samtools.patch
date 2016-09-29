@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-09-12 17:33:03.415664612 +0900
-@@ -0,0 +1,7452 @@
++++ ../files/samtools/bam_sam2bam.c	2016-09-29 17:09:02.715338472 +0900
+@@ -0,0 +1,7747 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -172,8 +172,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 77 $
-+	$Date: 2016-09-12 17:33:02 +0900 (Mon, 12 Sep 2016) $
++	$Rev: 78 $
++	$Date: 2016-09-29 17:09:01 +0900 (Thu, 29 Sep 2016) $
 +
 +	*/
 +
@@ -332,6 +332,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static long	mem_getInstID18;
 +static long	mem_sortSam1;
 +static long	mem_sortSam2;
++static long	mem_saveUnmapReads;
 +
 +static long md_register_mem_id(const char * mem_id_str);
 +#define REGISTER_MEM_ID(id) id = md_register_mem_id(#id)
@@ -385,6 +386,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +	REGISTER_MEM_ID(mem_getInstID18);
 +	REGISTER_MEM_ID(mem_sortSam1);
 +	REGISTER_MEM_ID(mem_sortSam2);
++	REGISTER_MEM_ID(mem_saveUnmapReads);
 +}
 +
 +static long mem_id = 0; // 0 is not used to detect use of a static id variable (usually zero) before registration
@@ -2851,8 +2853,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  bam_free_list2_t bam_free_list2;
 +
 +  int page_out;
-+  size_t max_cache_size;	// max bytes to keep bam1_t data in the main memory
-+  size_t cur_cache_size;
++//  size_t max_cache_size;	// max bytes to keep bam1_t data in the main memory
++//  size_t cur_cache_size;
 +//  volatile uint32_t bam_vaddr_seqid;
 +  long prof_n_spn;
 +} mt_bamcopy_t;
@@ -3775,7 +3777,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +}
 +
 +static mt_bamcopy_t mt_bamcopy;
-+static mt_bamcopy_t * mt_bamcopy_init(mt_page_write_t *page_write, mt_hash_t *hash, bucket_array_t * bucket_array, bam_hdr_t *header, size_t _max_mem, int paging) { 
++static mt_bamcopy_t * mt_bamcopy_init(mt_page_write_t *page_write, mt_hash_t *hash, bucket_array_t * bucket_array, bam_hdr_t *header, int paging) { 
 +
 +  malloc_qnameid_space(n_bam_copier);
 +
@@ -3800,8 +3802,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  bamcopy->header = header;
 +  bamcopy->bucket_array = bucket_array;
 +  bamcopy->page_out = paging;
-+  bamcopy->max_cache_size = _max_mem;
-+  bamcopy->cur_cache_size = 0;
++//  bamcopy->max_cache_size = _max_mem;
++//  bamcopy->cur_cache_size = 0;
 +  bam_free_list2_init(&bamcopy->bam_free_list2);
 +  /*
 +  * initialized by the submitter
@@ -4148,7 +4150,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  struct mt_samparse *mt;
 +  samparse_queue_t * volatile q;
 +  volatile size_t n_enq, n_deq, n_spn;
-+  struct unmap_fifo  *us;
++  struct unmap_reads *ur;
++  size_t ur_count;
 +} samparse_work_t;
 +
 +typedef struct {
@@ -4206,6 +4209,195 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  __atomic_fetch_add(&samparse->w[tx].n_spn, spn, __ATOMIC_RELAXED);
 +}
 +
++#define UNMAP_READ_ARRAY_LEN 4096
++typedef struct unmap_reads {
++  struct unmap_reads *next;
++  long index;
++  bam1_t *reads[];
++} unmap_reads_t;
++
++typedef struct {
++  long samparser_idx;
++  unmap_reads_t *unmap_reads_ptr;
++  long unmap_reads_idx;
++  unmap_reads_t *unmap_reads[];
++} usi_unsorted_t;
++
++typedef struct {
++  size_t curr;
++  size_t size;
++  bam1_t *b[];
++} usi_sorted_t;
++
++typedef struct unmap_space_iter {
++  long is_sorted;
++  union {
++    usi_unsorted_t unsorted[1];
++    usi_sorted_t   sorted[1];
++  };
++} unmap_space_iter_t;
++
++#define iter_samparser_idx(iter)	((iter)->unsorted[0].samparser_idx)
++#define iter_unmap_reads_ptr(iter)	((iter)->unsorted[0].unmap_reads_ptr)
++#define iter_unmap_reads_idx(iter)	((iter)->unsorted[0].unmap_reads_idx)
++#define iter_unmap_reads(iter)	((iter)->unsorted[0].unmap_reads)
++
++#define iter_curr(iter)		((iter)->sorted[0].curr)
++#define iter_size(iter)		((iter)->sorted[0].size)
++#define iter_b(iter)		((iter)->sorted[0].b)
++
++static int mt_wrt_throughput_offset = 0;
++
++static void
++save_unmapped_reads(samparse_work_t *w, bam1_t *b) {
++  if(NULL == w->ur || 				// no unmap_reads_t allocated yet since b is the first unmap read for the current sam parser
++    w->ur->index >= UNMAP_READ_ARRAY_LEN) 	// no space in the current unmap_reads_t
++  {
++    unmap_reads_t *t = md_malloc(sizeof(*w->ur)+sizeof(w->ur->reads[0])*UNMAP_READ_ARRAY_LEN, mem_saveUnmapReads, 1);
++    t->next = w->ur;
++    w->ur = t;
++  }
++  w->ur->reads[w->ur->index++] = b;
++  w->ur_count++;
++}
++
++
++static int unmap_cmpfunc(const void *p1, const void *p2){
++  bam1_t * const b1 = *(bam1_t **)p1;
++  bam1_t * const b2 = *(bam1_t **)p2;
++//
++// Emulate SortSam (SAMRecordCoordinateComparator)
++//
++//			Value
++//	1. RNAME index	"*"
++//	2. POS		0
++//	3. FLAG reverse	0
++//	4. QNAME
++//	5. FLAG
++//	6. MAPQ		0
++//	7. RNEXT index	"*"
++//	8. PNEXT 	0
++//	9. TLEN 	0
++//
++
++//	4. QNAME
++  int r_qname = memcmp(bam_get_qname(b1), bam_get_qname(b2), b1->core.l_qname < b2->core.l_qname ? b1->core.l_qname : b2->core.l_qname);
++  if (0 == r_qname) {
++    r_qname = (b1->core.l_qname - b2->core.l_qname);
++  }
++#if defined(DEBUG_POS)
++  if (dump) {
++    fprintf(stderr, "(I) cmpfunc read %.*s %c %.*s\n",  (int)len1, str1, r_qname==0?'=':(r_qname>0?'<':'>'), (int)len2, str2);
++  }
++#endif
++  if (r_qname) return r_qname;
++
++//	5. FLAG
++  int const r_flag = b1->core.flag - b2->core.flag;
++#if defined(DEBUG_POS)
++  if (dump) {
++    fprintf(stderr, "(I) cmpfunc flag %u %c %u\n", flag1, r_flag==0?'=':(r_flag>0?'<':'>'), flag2);
++  }
++#endif
++  if (r_flag) return r_flag;
++
++  return 0;
++}
++
++
++static unmap_space_iter_t *
++init_unmap_space_iter(mt_samparse_t *samparse) {
++  unmap_space_iter_t *iter = NULL;
++  size_t count = 0;
++
++  size_t i;
++  for (i=0; i<n_sam_parser; i++) {
++    count += samparse->w[i].ur_count;
++  }
++
++  if (count > 0) {
++    if (g_unsort) {
++      iter = md_malloc(sizeof(unmap_space_iter_t)+sizeof(unmap_reads_t*)*n_sam_parser, mem_initUnmapSpaceIter, 0);
++      iter->is_sorted = 0;
++      for (i=0; i<n_sam_parser; i++) {
++        iter_unmap_reads(iter)[i] = samparse->w[i].ur;
++      }
++      iter_samparser_idx(iter) = 0;						// 1st parser
++      iter_unmap_reads_ptr(iter) = iter_unmap_reads(iter)[iter_samparser_idx(iter)];	// 1st unmap_reads_t (or NULL if there are no unmap reads)
++      iter_unmap_reads_idx(iter) = 0;						// unmap_reads[0]
++    } else {
++      // !g_unsort
++      iter = md_malloc(sizeof(unmap_space_iter_t)+sizeof(bam1_t*)*count, mem_initUnmapSpaceIter, 0);
++      iter->is_sorted = 1;
++      iter_curr(iter) = 0;
++      iter_size(iter) = count;
++      size_t k = 0;
++      for (i=0; i<n_sam_parser; i++) {
++        unmap_reads_t *ur;
++        for (ur=samparse->w[i].ur; ur; ur=ur->next) {
++          long j;
++          for (j=0; j<ur->index; j++) {
++            iter_b(iter)[k++] = ur->reads[j];
++          }
++        }
++      }
++      if (count != k) {
++        fprintf(stderr, "(E) init_unmap_space_iter: k %ld must be %ld\n", k, count);
++        exit(-1);
++      }
++      struct timeval sort_start;
++      gettimeofday(&sort_start, NULL);
++      // sort the list of unmap_list_t nodes using block_seqid as the key
++      qsort(iter_b(iter), count, sizeof(iter_b(iter)[0]), unmap_cmpfunc);
++
++      struct timeval sort_end;
++      gettimeofday(&sort_end, NULL);
++      double sort_fin = sort_end.tv_sec-sort_start.tv_sec +(sort_end.tv_usec-sort_start.tv_usec)/1000000.0;
++      fprintf(stderr, "(I) sort unmap POS=0 reads (#reads %ld time %.1f sec)\n", count, sort_fin);
++    }
++    mt_wrt_throughput_offset ++;
++  }
++  return iter;
++}
++
++static bam1_t *
++get_unmapped_reads(unmap_space_iter_t *iter) {
++  if (NULL == iter) return NULL;
++
++  bam1_t *b = NULL;
++  if (0 == iter->is_sorted) {
++    while (1) {
++      unmap_reads_t * ur_ptr = iter_unmap_reads_ptr(iter);
++      if (NULL != ur_ptr) {
++        if (iter_unmap_reads_idx(iter) < ur_ptr->index) {
++          b = ur_ptr->reads[iter_unmap_reads_idx(iter)++];
++          break;
++        } else {
++          iter_unmap_reads_ptr(iter) = ur_ptr->next;
++          iter_unmap_reads_idx(iter) = 0;
++        }
++      } else {
++        // ur_ptr == null
++        iter_samparser_idx(iter)++;
++        if (iter_samparser_idx(iter) < n_sam_parser) {
++          iter_unmap_reads_ptr(iter) = iter_unmap_reads(iter)[iter_samparser_idx(iter)];
++          iter_unmap_reads_idx(iter) = 0;
++        } else {
++          // no next bam1_t
++          break;
++        }
++      }
++    }
++  } else {
++    if (iter_curr(iter) < iter_size(iter)) {
++      b = iter_b(iter)[iter_curr(iter)++];
++    }
++  }
++  return b;
++}
++
++
++#if 0
 +#define UNMAP_SPACE_SIZE	BAM_SPACE_SIZE	// must be the same size as bam_space_t space[] to be addressed by bam_vaddr_t seqid 
 +typedef struct unmap_space {
 +  struct unmap_space *next;
@@ -4319,10 +4511,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  return u1->block_seqid - u2->block_seqid;
 +}
 +
-+static int mt_wrt_throughput_offset = 0;
-+
 +static int picard_sortsam_cmpfunc(const void * v1, const void * v2, void * args) ;
-+static int picard_sortsam_cmpfunc_clip(const void * v1, const void * v2, void * args) ;
 +
 +/*
 + * create an iterator
@@ -4364,6 +4553,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +      }
 +    }
 +  }
++if (!g_unsort) {
 +  struct timeval sort_start;
 +  gettimeofday(&sort_start, NULL);
 +  // sort the list of unmap_list_t nodes using block_seqid as the key
@@ -4373,6 +4563,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  gettimeofday(&sort_end, NULL);
 +  double sort_fin = sort_end.tv_sec-sort_start.tv_sec +(sort_end.tv_usec-sort_start.tv_usec)/1000000.0;
 +  fprintf(stderr, "(I) sort unmap POS=0 reads (#block_seqid %ld #reads %ld time %.1f sec)\n", count, total, sort_fin);
++}
 +  mt_wrt_throughput_offset ++;
 +
 +  // initialize an iterator with the node information that has the smallest block_seqid
@@ -4410,7 +4601,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  }
 +  return b;
 +}
-+
++#endif
 +
 +
 +/*
@@ -4487,7 +4678,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +            if (include) {
 +	      // exclude unmapped reads that have POS 0 since they are not analyzed and are apppended to the sorted list of reads
 +	      if (0 != (b->core.flag & BAM_FUNMAP) && -1 == b->core.pos) {
-+	        save_unmapped_reads(w, b, blkrd->block_seqid, q2->line_splitter_id);
++	        save_unmapped_reads(w, b);
++	        //save_unmapped_reads(w, b, blkrd->block_seqid, q2->line_splitter_id);
 +	      } else {
 +	        mt_bamcopy_enqueue(mt->bamcopy, b, bamid, myid);
 +	      }
@@ -4561,7 +4753,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  uint64_t cpu_vec[cpu_vec_len];
 +  memset(cpu_vec, 0, sizeof(uint64_t)*cpu_vec_len);
 +  for(i=0; i<n_sam_parser; i++){
-+    samparse->w[i].us = md_malloc(sizeof(samparse->w[i].us[0])*n_line_splitter, mem_samparseInit, 1);
++    //samparse->w[i].us = md_malloc(sizeof(samparse->w[i].us[0])*n_line_splitter, mem_samparseInit, 1);
 +    samparse->w[i].mt = samparse;
 +    pthread_create(&samparse->w[i].tid, &attr, mt_sam_parser, &samparse->w[i]);
 +    char tn[32];
@@ -4889,6 +5081,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  mt_sort_sam_t *ss;
 +} ss_worker_t;
 +
++static int picard_sortsam_cmpfunc_clip(const void * v1, const void * v2, void * args) ;
++
 +static void mt_sam_sorter__(int tidx, mt_sort_sam_t * ss) {
 +  bucket_array_t * const ba = ss->bucket_array;
 +  int const n_threads = ss->n_threads;
@@ -5049,7 +5243,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +typedef struct mt_linesplit {
 +  mt_samparse_t *samparse;
-+  samFile *fp;
 +  bam_free_list2_t *bam_free_list2;
 +  struct blkrd ** my_q;		// submitter's queue
 +  linesplit_work_t *w;
@@ -5061,21 +5254,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  linesplit_work_t * const w = (linesplit_work_t*)data;
 +  mt_linesplit_t * const mt = w->mt;
 +  int const myid = w - mt->w;
-+  const int format = mt->fp->format.format;
-+  switch (format) {
-+  case bam: 
-+  case cram:
-+    // enqueue bam read
-+    //TODO:
-+    fprintf(stderr, "BAM/CRAM input is not supported yet\n");
-+    exit(-1);
-+    //mt_hash_enqueue(p_hash, b, g_bamid, 0, qnameid);
-+    break;
-+  case sam:
-+    break;
-+  default:
-+    abort();
-+  }
 +
 +  while(1){
 +    // obtain a new queue if it was added
@@ -5138,7 +5316,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +}
 +
 +static mt_linesplit_t mt_linesplit;
-+static mt_linesplit_t * mt_linesplit_init(mt_samparse_t *samparse, samFile *fp){
++static mt_linesplit_t * mt_linesplit_init(mt_samparse_t *samparse){
 +  int i;
 +  samparse->my_q = md_malloc(sizeof(samparse->my_q[0])*n_line_splitter, mem_linesplitInit, 0);
 +  for(i=0; i<n_line_splitter; i++){
@@ -5150,7 +5328,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  pthread_attr_init(&attr);
 +  mt_linesplit_t *linesplit = &mt_linesplit;
 +  linesplit->samparse = samparse;
-+  linesplit->fp = fp;
 +  linesplit->bam_free_list2 = samparse->bam_free_list2;
 +  linesplit->w = md_malloc(sizeof(linesplit->w[0])*n_line_splitter, mem_linesplitInit, 1);
 +  linesplit->my_q = md_malloc(sizeof(linesplit->my_q[0])*n_block_reader, mem_linesplitInit, 1);
@@ -5235,10 +5412,42 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  mt_samparse_end(linesplit->samparse);
 +}
 +
++typedef struct input_fps {
++  int n;
++  samFile *fp[];
++} input_fps_t;
++
++typedef struct input_files {
++  int n;
++  char *fn[];
++} input_files_t;
++
++typedef struct {
++  pthread_t tid;
++  struct mt_blkrd *mt;
++} blkrd_work_t;
++
++typedef struct mt_blkrd {
++  mt_linesplit_t *linesplit;
++  input_fps_t   *fps;
++  input_files_t *input_files;
++  blkrd_work_t *w;
++  void * orig_uncompressed_block;
++  size_t read_bytes;
++  blkrd_free_list2_t blkrd_free_list2;
++  //mt_drop_cache_t *drop_cache;
++  struct mt_progress *progress;
++  struct mt_drop_cache *drop_cache;
++
++  // profile
++  double time_open;
++  long   n_open;
++} mt_blkrd_t;
++
 +typedef struct mt_drop_cache {
++  mt_blkrd_t *blkrd;
 +  pthread_t tid;
 +  long count;
-+  int fd;
 +  volatile int done;
 +  struct timeval begin;
 +} mt_drop_cache_t;
@@ -5246,15 +5455,45 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static void *mt_drop_cache(void *data) {
 +  mt_drop_cache_t * const mt = (mt_drop_cache_t*)data;
 +  static off_t last = 0;
-+  const int fd = mt->fd;
++  mt_blkrd_t * const blkrd = mt->blkrd;
++
++int i;
++for (i=0; i < blkrd->fps->n; i++) {
++//  BGZF * const bgzf = ((kstream_t*)fp->fp.voidp)->f;
++//  int const fd = ((hFILE_fd*)(bgzf->fp))->fd;
++  volatile samFile ** const p_fp = (volatile samFile **)(&blkrd->fps->fp[i]);
++  while(NULL == *p_fp) {
++    sleep(1);
++  }
++  samFile * const fp = (samFile *)*p_fp;
++  const int fd = ((hFILE_fd*)((kstream_t*)fp->fp.voidp)->f->fp)->fd;
++
++  struct stat st_buf;
++  st_buf.st_size = 0;
++  if (-1 == fstat(fd, &st_buf)) {
++    fprintf(stderr, "(W) DROP CACHE: fstat failed\n");
++    continue;
++  }
++  const size_t file_size = st_buf.st_size;
++  
++  last = 0;
 +
 +  while(1) {
 +    off_t const curr = lseek(fd, 0, SEEK_CUR);
 +    if (-1 == curr) {
-+      perror("mt_drop_cache: lseek ");
-+      exit(-1);
-+    }
++      fprintf(stderr, "(W) DROP CACHE: not drop the cache for %s skip since lseek SEEK_CUR failed\n", blkrd->input_files->fn[i]);
++      break;
++    } 
 +    posix_fadvise(fd, last, curr - last, POSIX_FADV_DONTNEED);
++#if defined(VERBOSE_DROP_CACHE)
++    fprintf(stderr, "(I) DROP CACHE: drop region %ld - %ld of %s\n\n\n", last, curr, blkrd->input_files->fn[i]);
++#endif
++    if (file_size == curr) {
++#if defined(VERBOSE_DROP_CACHE)
++      fprintf(stderr, "(I) DROP CACHE: drop file cache done: %s\n\n\n", blkrd->input_files->fn[i]);
++#endif
++      break;
++    }
 +    last = curr;
 +
 +    mt->count++;
@@ -5263,19 +5502,16 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +    if (mt->done) break;
 +  }
++}
 +  return NULL;
 +}
 +
 +mt_drop_cache_t drop_cache;
-+static mt_drop_cache_t *mt_drop_cache_init(samFile *fp) {
++static mt_drop_cache_t *mt_drop_cache_init(mt_blkrd_t *blkrd) {
 +  mt_drop_cache_t *mt = &drop_cache;
++  mt->blkrd = blkrd;
 +  pthread_attr_t attr;
 +  pthread_attr_init(&attr);
-+
-+//  BGZF * const bgzf = ((kstream_t*)fp->fp.voidp)->f;
-+//  int const fd = ((hFILE_fd*)(bgzf->fp))->fd;
-+  const int fd = ((hFILE_fd*)((kstream_t*)fp->fp.voidp)->f->fp)->fd;
-+  mt->fd = fd;
 +
 +  mt->count = 0;
 +  mt->done = 0;
@@ -5299,22 +5535,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +  fprintf(stderr, "(I) %ld cache drops (%.1f /s)\n", mt->count, mt->count/drop_time);
 +}
-+
-+typedef struct {
-+  pthread_t tid;
-+  struct mt_blkrd *mt;
-+} blkrd_work_t;
-+
-+typedef struct mt_blkrd {
-+  mt_linesplit_t *linesplit;
-+  samFile *fp;
-+  blkrd_work_t *w;
-+  void * orig_uncompressed_block;
-+  size_t read_bytes;
-+  blkrd_free_list2_t blkrd_free_list2;
-+  mt_drop_cache_t *drop_cache;
-+  struct mt_progress *progress;
-+} mt_blkrd_t;
 +
 +typedef struct mt_progress {
 +  pthread_t tid;
@@ -5382,21 +5602,16 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  gettimeofday(&read_end, NULL);
 +  double rd_fin = read_end.tv_sec-time_begin.tv_sec +(read_end.tv_usec-time_begin.tv_usec)/1000000.0;
 +  double rd_fin2 = read_end.tv_sec-read_start.tv_sec +(read_end.tv_usec-read_start.tv_usec)/1000000.0;
-+  fprintf(stderr, "%s[%8.2f] read finished (%.1f MB/s)%s\n", "\33[30;1m", rd_fin, p_blkrd->read_bytes/rd_fin2/1024/1024, "\33[0m");
++  fprintf(stderr, "%s[%8.2f] read finished (%.1f MB/s)%s  (open time %.1f sec count %ld)\n", "\33[30;1m", rd_fin, p_blkrd->read_bytes/rd_fin2/1024/1024, "\33[0m",
++	p_blkrd->time_open, p_blkrd->n_open);
 +  if (!filters.use_baminfo) mt_wrt_throughput_offset ++;
 +  return NULL;
 +}
 +static mt_progress_t progress;
-+static mt_progress_t *mt_progress_init(mt_blkrd_t *blkrd, samFile *fp) {
-+struct stat st_buf;
-+st_buf.st_size = 0;
-+const int fd = ((hFILE_fd*)((kstream_t*)fp->fp.voidp)->f->fp)->fd;
-+if (-1 == fstat(fd, &st_buf)) {
-+fprintf(stderr, "(I) fstat failed\n");
-+}
++static mt_progress_t *mt_progress_init(mt_blkrd_t *blkrd, size_t size) {
 +  mt_progress_t *mt = &progress;
 +  mt->blkrd = blkrd;
-+  mt->size = st_buf.st_size;
++  mt->size = size;
 +  pthread_attr_t attr;
 +  pthread_attr_init(&attr);
 +  pthread_create(&mt->tid, &attr, mt_progress, mt);
@@ -5414,26 +5629,76 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  blkrd_work_t * const w = (blkrd_work_t*)data;
 +  mt_blkrd_t * const mt = w->mt;
 +  const int myid = w - w->mt->w;
-+  samFile *fp = mt->fp;
++
 +  int partial_line_len = 0;
 +  char partial_line[MAX_LINE_LENGTH];
 +  uint32_t block_seqid = 0;
++static double total_open = 0.0;
++int n_open = 0;
 +
-+  const int format = mt->fp->format.format;
-+  switch (format) {
-+  case bam: 
-+  case cram:
-+    // enqueue bam read
-+    //TODO:
-+    fprintf(stderr, "BAM/CRAM input is not supported yet\n");
-+    exit(-1);
-+    //mt_hash_enqueue(p_hash, b, g_bamid, 0, qnameid);
-+    break;
-+  case sam:
-+    break;
-+  default:
-+    abort();
++int fn_i;
++for (fn_i=0; fn_i < mt->input_files->n; fn_i++) {
++  char * const fn = mt->input_files->fn[fn_i];
++
++struct timeval tm_open;
++gettimeofday(&tm_open, NULL);
++
++  samFile *const fp = sam_open(fn, "r");
++  if (fp == NULL) {
++    // in case that the target file was removed after its header was checked
++    fprintf(stderr, "(E) fail to open file %s\n", fn);
++    return NULL;
 +  }
++  mt->fps->fp[fn_i] = fp;
++  // skip the header
++  bam_hdr_t * const tmp_hdr = sam_hdr_read(fp);
++  if (0 != fn_i) {
++    bam_hdr_t * const header = mt->linesplit->samparse->header;
++    // compare the current header to the header for the 1st SAM file 
++    if (header->l_text == tmp_hdr->l_text &&
++        0 == memcmp(header->text, tmp_hdr->text, header->l_text)) {
++      // the same header
++    } else {
++      fprintf(stderr, "\n\n(E) %s has the header (len %d) that is different from the first file's %s (len %d)\n", mt->input_files->fn[fn_i], tmp_hdr->l_text, mt->input_files->fn[0], header->l_text);
++      char *p1 = header->text;
++      char *p2 = tmp_hdr->text;
++      int i=0;
++      while(1) {
++        i++;
++        char * const ln1 = strsep(&p1, "\n");
++        char * const ln2 = strsep(&p2, "\n");
++        if (0 != strcmp(ln1, ln2)) {
++          fprintf(stderr, "(E)     The first difference between the first and current files appears at line %d:\n", i);
++          fprintf(stderr, "(E)     current file: %s\n", mt->input_files->fn[fn_i]);
++          fprintf(stderr, "(E)         %s\n", ln2);
++          fprintf(stderr, "(E)     first file: %s\n", mt->input_files->fn[0]);
++          fprintf(stderr, "(E)         %s\n", ln1);
++          break;
++        }
++        if (p1 == header->text + header->l_text
++         && p2 != tmp_hdr->text + tmp_hdr->l_text) {
++          fprintf(stderr, "(E)     The current file has the following line at line %d, but the first file does not have it at the same position\n", i);
++          fprintf(stderr, "(E)         %s\n", p2);
++          break;
++        } else if (p1 != header->text + header->l_text
++         && p2 == tmp_hdr->text + tmp_hdr->l_text) {
++          fprintf(stderr, "(E)     The first file has the following line at line %d, but the current file does not have it at the same position\n", i);
++          fprintf(stderr, "(E)         %s\n", p1);
++          break;
++        } else if (p1 == header->text + header->l_text
++         && p2 == tmp_hdr->text + tmp_hdr->l_text) {
++          break;
++        }
++      }
++      exit(-1);
++    }
++  }
++  bam_hdr_destroy(tmp_hdr);
++struct timeval tm_open2;
++gettimeofday(&tm_open2, NULL);
++double t = tm_open2.tv_sec-tm_open.tv_sec+(tm_open2.tv_usec-tm_open.tv_usec)/1000000.0;
++total_open += t;
++n_open++;
 +
 +/*
 +  After sam_hdr_read(), some data were already read in the internal buffers:
@@ -5442,16 +5707,25 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +  The data should be processed in the block reader thread.
 +*/
-+  blkrd_t *b = md_blkrd_alloc(&mt->blkrd_free_list2);
 +  kstream_t * const ks = (kstream_t*)fp->fp.voidp;
 +  unsigned char * const ks_start = ks->buf + ks->begin;
 +  int const ks_len = ks->end - ks->begin;
++  blkrd_t *b = md_blkrd_alloc(&mt->blkrd_free_list2);
 +  memcpy(b->block, fp->line.s, fp->line.l);
 +  b->block[fp->line.l] = '\n';
 +  int read_len;
-+  BGZF *bgzf = ((kstream_t*)fp->fp.voidp)->f;
-+
++  BGZF * const bgzf = ks->f;
 +  mt->orig_uncompressed_block = bgzf->uncompressed_block;
++  {
++    int fd = ((hFILE_fd*)bgzf->fp)->fd;
++    struct stat st_buf;
++    st_buf.st_size = 0;
++    if (-1 == fstat(fd, &st_buf)) {
++      fprintf(stderr, "(I) mt_block_reader: fstat failed\n");
++    } else {
++      posix_fadvise(fd, 0, st_buf.st_size, POSIX_FADV_SEQUENTIAL);
++    }
++  }
 +
 +  unsigned char * const last = memrchr(ks_start, '\n', ks_len);
 +  if (last) {
@@ -5545,19 +5819,27 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +      }
 +      break;
 +    }
-+  }
++  } // while(1)
 +
 +  bgzf->uncompressed_block = mt->orig_uncompressed_block;
++
++  // sam_close(fp);
++} /* multiple input SAM files */
++
++  w->mt->time_open = total_open;
++  w->mt->n_open = n_open;
 +
 +  return NULL;
 +}
 +
 +static mt_blkrd_t mt_blkrd;
-+static mt_blkrd_t * mt_blkrd_init(mt_linesplit_t *linesplit, samFile *fp) {
++static mt_blkrd_t * mt_blkrd_init(mt_linesplit_t *linesplit, input_files_t *input_files, size_t total_size) {
 +  pthread_attr_t attr;
 +  pthread_attr_init(&attr);
 +  mt_blkrd_t *blkrd = &mt_blkrd;
-+  blkrd->fp = fp;
++  blkrd->fps = md_malloc(sizeof(*blkrd->fps)+sizeof(blkrd->fps->fp[0])*input_files->n, mem_core_ext, 1/* zero clear*/);
++  blkrd->fps->n = input_files->n;
++  blkrd->input_files = input_files;
 +  blkrd->linesplit = linesplit;
 +  blkrd->w = md_malloc(sizeof(blkrd->w[0])*n_block_reader, mem_blkrdInit, 1);
 +  blkrd->read_bytes = 0;
@@ -5593,10 +5875,10 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  fprintf(stderr, "\n");
 +
 +  if (g_drop_cache) {
-+    blkrd->drop_cache = mt_drop_cache_init(fp);
++    blkrd->drop_cache = mt_drop_cache_init(blkrd);
 +  }
 +  if (NULL == getenv("DUMP_THROUGHPUT")){
-+    blkrd->progress = mt_progress_init(blkrd, fp);
++    blkrd->progress = mt_progress_init(blkrd, total_size);
 +  }
 +
 +  return &mt_blkrd;
@@ -5616,6 +5898,9 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +  if (g_drop_cache) {
 +    mt_drop_cache_end(blkrd->drop_cache);
++  }
++  for(i=0; i<blkrd->fps->n; i++) {
++    sam_close(blkrd->fps->fp[i]);
 +  }
 +}
 +
@@ -6624,11 +6909,9 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +}
 +}
 +
-+
 +/*!
 +  @abstract Convert SAM to compressed BAM
 +
-+  @param  is_by_qname whether to sort by query name
 +  @param  fn       name of the file to be sorted
 +  @param  prefix   prefix of the temporary files (prefix.NNNN.bam are written)
 +  @param  fnout    name of the final output file to be written
@@ -6640,7 +6923,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  and then merge them by calling bam_merge_core(). This function is
 +  NOT thread safe.
 + */
-+int bam_sam2bam_core_ext(int is_by_qname, const char *fn, const char *prefix, const char *fnout, const char *modeout, size_t _max_mem, int paging)
++int bam_sam2bam_core_ext(input_files_t *input_files, const char *prefix, const char *fnout, const char *modeout, int paging)
 +{
 +    md_mem_init();
 +#if defined(DEBUG_POS)
@@ -6767,31 +7050,70 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 77 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 78 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
 +
 +    hts_init_accelerator();
 +
-+    samFile *const fp = sam_open(fn, "r");
-+    {
++bam_hdr_t * header = NULL;
++size_t total_size = 0;
++
++const size_t fps_size = sizeof(input_fps_t)+sizeof(samFile*)*input_files->n;
++input_fps_t *fps = md_malloc(fps_size, mem_core_ext, 0);
++fps->n = input_files->n;
++int fn_i;
++for (fn_i=0; fn_i < input_files->n; fn_i++) {
++  char * const fn = input_files->fn[fn_i];
++  int format;
++
++  samFile *const fp = sam_open(fn, "r");
++  if (fp == NULL) {
++      fprintf(stderr, "[bam_sort_core] fail to open file %s\n", fn);
++      return -1;
++  }
++  fps->fp[fn_i] = fp;
++  format = fp->format.format;
++#if 0
++  {
 +      int fd = ((hFILE_fd*)((kstream_t*)fp->fp.voidp)->f->fp)->fd;
 +      off_t const orig = lseek(fd, 0, SEEK_CUR);
 +      off_t const sam_size = lseek(fd, 0, SEEK_END);
 +      lseek(fd, orig, SEEK_SET);
 +      posix_fadvise(fd, 0, sam_size, POSIX_FADV_SEQUENTIAL);
-+    }
-+
-+    if (fp == NULL) {
-+        fprintf(stderr, "[bam_sort_core] fail to open file %s\n", fn);
-+        return -1;
-+    }
-+    bam_hdr_t * const header = sam_hdr_read(fp);
++  }
++#endif
++  if (0 == fn_i) { // first SAM file
++    header = sam_hdr_read(fp);
++  }
++  struct stat st_buf;
++  st_buf.st_size = 0;
++  const int fd = ((hFILE_fd*)((kstream_t*)(fps->fp[fn_i])->fp.voidp)->f->fp)->fd;
++  if (-1 == fstat(fd, &st_buf)) {
++    fprintf(stderr, "(I) mt_progress_init: fstat failed\n");
++  } else {
++    total_size += st_buf.st_size;
++  }
++  switch (format) {
++  case bam: 
++  case cram:
++    // enqueue bam read
++    //TODO:
++    fprintf(stderr, "BAM/CRAM input is not supported yet\n");
++    exit(-1);
++    //mt_hash_enqueue(p_hash, b, g_bamid, 0, qnameid);
++    break;
++  case sam:
++    break;
++  default:
++    abort();
++  }
++  sam_close(fps->fp[fn_i]); // input
++} /* check if the headers are the same for multiple SAM file */
++md_free(fps, fps_size, mem_core_ext);
 +
 +    //size_t mem = 0, k = 0;
-+    if (is_by_qname) change_SO(header, "queryname");
-+    else change_SO(header, "coordinate");
 +    // write sub files
 +#if 1
 +    create_rg2lib(header);
@@ -6904,12 +7226,11 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    //line_free_list2_init(&line_free_list2);
 +    //blkrd_free_list2_init(&blkrd_free_list2);
 +
++    mt_bamwrite_t *p_bamwrite = NULL;
++
++    samFile *fp_out = NULL;
 +    mt_hash_t *p_hash = NULL;
 +    mt_bamcopy_t *p_bamcopy = NULL;
-+    mt_bamwrite_t *p_bamwrite = NULL;
-+    samFile *fp_out = NULL;
-+    mt_prof2_t *p_prof2 = NULL;
-+
 +    if (!filters.use_baminfo) {
 +      fp_out = sam_open(fnout, modeout);
 +      if (fp_out == NULL) {perror("sam_open failed");exit(-1);};
@@ -6920,21 +7241,22 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +      p_bamwrite = mt_bamwrite_init(fp_out, header);
 +    } else {
 +      p_hash = mt_hash_init(bucket_array, bucketU_array, header);
-+      p_bamcopy = mt_bamcopy_init(p_page_write, p_hash, bucket_array, header, _max_mem, paging);
++      p_bamcopy = mt_bamcopy_init(p_page_write, p_hash, bucket_array, header, paging);
 +    }
-+    mt_samparse_t *p_samparse = mt_samparse_init(p_bamcopy, p_bamwrite, header, fp_out);
++    mt_samparse_t * const p_samparse = mt_samparse_init(p_bamcopy, p_bamwrite, header, fp_out);
 +    // register samparse_enq_t * const enq0 = &p_samparse->enq[0];
-+    mt_linesplit_t *p_linesplit = mt_linesplit_init(p_samparse, fp);
-+    mt_blkrd_t *p_blkrd = mt_blkrd_init(p_linesplit, fp);
++    mt_linesplit_t * const p_linesplit = mt_linesplit_init(p_samparse);
++    mt_blkrd_t * const p_blkrd = mt_blkrd_init(p_linesplit, input_files, total_size);
++    mt_prof2_t *p_prof2 = NULL;
 +    if (!filters.use_baminfo) {
 +      p_prof2 = mt_wrt_throughput_init();
 +    }
 +
-+    mt_prof_t *p_prof = NULL; 
 +#endif
-+if (getenv("DUMP_THROUGHPUT")){
-+    p_prof = mt_throughput_init(p_blkrd, p_linesplit, p_samparse, p_bamcopy, p_hash);
-+}
++    mt_prof_t *p_prof = NULL; 
++    if (getenv("DUMP_THROUGHPUT")){
++        p_prof = mt_throughput_init(p_blkrd, p_linesplit, p_samparse, p_bamcopy, p_hash);
++    }
 +    //if(pthread_setname_np(pthread_self(), "<<main>>")){}
 +
 +#if defined(MT_HASH)
@@ -7037,6 +7359,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  samFile* fp_out = sam_open(fnout, modeout);
 +  if (fp_out == NULL) {perror("sam_open failed");exit(-1);};
 +  // write sam header without multihreads since multithreads can use only the pointers to bams
++  change_SO(header, "coordinate");
 +  sam_hdr_write(fp_out, header);
 +  hts_set_threads_2(fp_out, 1024 /* default 256 */, cpu_map);
 +
@@ -7315,7 +7638,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +struct stat st_buf;
 +st_buf.st_size = 0;
 +if (-1 == fstat(((hFILE_fd*)fp_out->fp.bgzf->fp)->fd, &st_buf)) {
-+fprintf(stderr, "(I) fstat failed\n");
++fprintf(stderr, "(I) fstat failed before closing the output file\n");
 +}
 +  sam_close(fp_out); // output
 +
@@ -7340,7 +7663,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +#endif
 +}
 +    bam_hdr_destroy(header);
-+    sam_close(fp); // input
 +struct timeval t4;
 +gettimeofday(&t4, NULL);
 +double all_fin2 = t4.tv_sec-t3.tv_sec +(t4.tv_usec-t3.tv_usec)/1000000.0;
@@ -7350,69 +7672,43 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    return 0;
 +}
 +
-+int bam_sam2bam_core(int is_by_qname, const char *fn, const char *prefix, size_t max_mem, int paging)
-+{
-+    int ret;
-+    char *fnout = calloc(1, strlen(prefix) + 4 + 1);
-+    sprintf(fnout, "%s.bam", prefix);
-+    ret = bam_sam2bam_core_ext(is_by_qname, fn, prefix, fnout, "wb", max_mem, paging);
-+    free(fnout);
-+    return ret;
-+}
 +
 +static int sort_usage(FILE *fp, int status)
 +{
 +    fprintf(fp,
-+"Usage: samtools sam2bam [options...] [in.bam]\n"
++"Usage: samtools sam2bam [options...] -o<out.bam> <in.sam>\n"
 +"Options:\n"
-+"  -d         Drop the input data from the file cache\n"
++"  -d         Drop the input data from the operating system file cache\n"
++"  -e         Emulate SortSam\n"
 +"  -l INT     Set compression level, from 0 (uncompressed) to 9 (best)\n"
-+"  -m INT     Set maximum memory per thread; suffix K/M/G recognized [768M]\n"
-+"  -n         Sort by read name\n"
-+"  -o FILE    Write final output to FILE rather than standard output\n"
-+"  -O FORMAT  Write output as FORMAT ('sam'/'bam'/'cram') (required. Legacy options assumed otherwise)\n"
++"  -O FORMAT  Write output as FORMAT (currently FORMAT must be bam)\n"
 +"  -p         Enable paging for a large input file (e.g., WGS)\n"
 +"  -s         Disable filters\n"
-+"  -e         Emulate SortSam\n"
-+"  -@ INT     Set number of sorting and compression threads [1]\n"
-+"\n"
-+"Legacy usage: samtools sort [options...] <in.bam> <out.prefix>\n"
-+"Options:\n"
-+"  -f         Use <out.prefix> as full final filename rather than prefix\n"
-+"  -o         Write final output to stdout rather than <out.prefix>.bam\n"
-+"  -l,m,n,@   Similar to corresponding options above\n");
++);
 +    return status;
 +}
 +
 +int bam_sam2bam(int argc, char *argv[])
 +{
-+    size_t max_mem = 768<<20; // 512MB
-+    int c, i, modern, nargs, is_by_qname = 0, is_stdout = 0, ret = EXIT_SUCCESS, level = -1, full_path = 0;
-+    char *fnout = "-", *fmtout = NULL, modeout[12], *tmpprefix = NULL;
++    int c, nargs, ret = EXIT_SUCCESS, level = -1;
++    char *fnout = "-", *fmtout = "bam", modeout[12], *tmpprefix = NULL;
 +    kstring_t fnout_buffer = { 0, 0, NULL };
 +
-+    modern = 0;
-+    for (i = 1; i < argc; ++i)
-+        if (argv[i][0] == '-' && strpbrk(argv[i], "O")) { modern = 1; break; }
-+
-+    while ((c = getopt(argc, argv, modern? "l:m:nsedpo:O:F:" : "fnom:l:")) >= 0) {
++    while ((c = getopt(argc, argv, "l:m:sedpo:O:F:")) >= 0) {
 +        switch (c) {
 +	case 'd': g_drop_cache = 1; break;
-+        case 'f': full_path = 1; break;
 +	case 'p': g_paging = 1; break;
 +	case 'e': g_unsort = 0; break;
 +	case 's': g_skip_filter = 1; break;
-+        case 'o': if (modern) fnout = optarg; else is_stdout = 1; break;
-+        case 'n': is_by_qname = 1; break;
-+        case 'm': {
-+                char *q;
-+                max_mem = strtol(optarg, &q, 0);
-+                if (*q == 'k' || *q == 'K') max_mem <<= 10;
-+                else if (*q == 'm' || *q == 'M') max_mem <<= 20;
-+                else if (*q == 'g' || *q == 'G') max_mem <<= 30;
-+                break;
-+            }
-+        case 'O': fmtout = optarg; break;
++        case 'o': fnout = optarg; break;
++        case 'O': {
++	  fmtout = optarg;
++	  if(0 != strcmp("bam", fmtout)) {
++	    fprintf(stderr, "(E) only bam supported\n");
++	    exit(-1);
++	  }
++	  break;
++	}
 +        case 'F': {
 +	  // -F filter_name:args
 +	  const char *args = strchr(optarg, ':'); 
@@ -7440,19 +7736,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    nargs = argc - optind;
 +    if (argc == 1)
 +        return sort_usage(stdout, EXIT_SUCCESS);
-+    else if (modern? (nargs > 1) : (nargs != 2))
-+        return sort_usage(stderr, EXIT_FAILURE);
-+
-+    if (!modern) {
-+        fmtout = "bam";
-+        if (is_stdout) fnout = "-";
-+        else if (full_path) fnout = argv[optind+1];
-+        else {
-+            ksprintf(&fnout_buffer, "%s.%s", argv[optind+1], fmtout);
-+            fnout = fnout_buffer.s;
-+        }
-+        tmpprefix = argv[optind+1];
-+    }
 +
 +    strcpy(modeout, "w");
 +    if (sam_open_mode(&modeout[1], fnout, fmtout) < 0) {
@@ -7463,7 +7746,19 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    }
 +    if (level >= 0) sprintf(strchr(modeout, '\0'), "%d", level < 9? level : 9);
 +
-+    if (bam_sam2bam_core_ext(is_by_qname, (nargs > 0)? argv[optind] : "-", tmpprefix, fnout, modeout, max_mem, g_paging) < 0) ret = EXIT_FAILURE;
++    // TODO: md_malloc cannot be called here since md_init is not called
++    input_files_t * const input_files = malloc(sizeof(input_files_t)+sizeof(char*)*(0==nargs ? 1 : nargs));
++    if (0 == nargs) {
++      input_files->n = 1;
++      input_files->fn[0] = "-";
++    } else {
++      input_files->n = nargs;
++      int i;
++      for (i=0; i<nargs; i++) {
++        input_files->fn[i] = argv[optind+i];
++      }
++    }
++    if (bam_sam2bam_core_ext(input_files, tmpprefix, fnout, modeout, g_paging) < 0) ret = EXIT_FAILURE;
 +
 +sort_end:
 +    free(fnout_buffer.s);
