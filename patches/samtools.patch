@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-09-29 17:09:02.715338472 +0900
-@@ -0,0 +1,7747 @@
++++ ../files/samtools/bam_sam2bam.c	2016-10-04 17:53:56.815050046 +0900
+@@ -0,0 +1,7778 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -5655,41 +5655,72 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  if (0 != fn_i) {
 +    bam_hdr_t * const header = mt->linesplit->samparse->header;
 +    // compare the current header to the header for the 1st SAM file 
-+    if (header->l_text == tmp_hdr->l_text &&
-+        0 == memcmp(header->text, tmp_hdr->text, header->l_text)) {
-+      // the same header
-+    } else {
-+      fprintf(stderr, "\n\n(E) %s has the header (len %d) that is different from the first file's %s (len %d)\n", mt->input_files->fn[fn_i], tmp_hdr->l_text, mt->input_files->fn[0], header->l_text);
-+      char *p1 = header->text;
-+      char *p2 = tmp_hdr->text;
-+      int i=0;
-+      while(1) {
-+        i++;
-+        char * const ln1 = strsep(&p1, "\n");
-+        char * const ln2 = strsep(&p2, "\n");
-+        if (0 != strcmp(ln1, ln2)) {
-+          fprintf(stderr, "(E)     The first difference between the first and current files appears at line %d:\n", i);
-+          fprintf(stderr, "(E)     current file: %s\n", mt->input_files->fn[fn_i]);
-+          fprintf(stderr, "(E)         %s\n", ln2);
-+          fprintf(stderr, "(E)     first file: %s\n", mt->input_files->fn[0]);
-+          fprintf(stderr, "(E)         %s\n", ln1);
-+          break;
-+        }
-+        if (p1 == header->text + header->l_text
-+         && p2 != tmp_hdr->text + tmp_hdr->l_text) {
-+          fprintf(stderr, "(E)     The current file has the following line at line %d, but the first file does not have it at the same position\n", i);
-+          fprintf(stderr, "(E)         %s\n", p2);
-+          break;
-+        } else if (p1 != header->text + header->l_text
-+         && p2 == tmp_hdr->text + tmp_hdr->l_text) {
-+          fprintf(stderr, "(E)     The first file has the following line at line %d, but the current file does not have it at the same position\n", i);
-+          fprintf(stderr, "(E)         %s\n", p1);
-+          break;
-+        } else if (p1 == header->text + header->l_text
-+         && p2 == tmp_hdr->text + tmp_hdr->l_text) {
-+          break;
-+        }
++    // @PG lines are different since they usually include file names.
++    size_t offset=0;
++    size_t cmp_len = header->l_text;
++
++    // compare the chunks between the 1st and current headers (optimization)
++    size_t const cmp_chunk_size = 1024;
++    while (cmp_len > 0) {
++      if (cmp_len >= cmp_chunk_size) {
++        if (0 == memcmp(header->text + offset, tmp_hdr->text + offset, cmp_chunk_size)) {
++          // same
++	  offset  += cmp_chunk_size;
++	  cmp_len -= cmp_chunk_size;
++          continue;
++        } else {
++	  // different lines exist in the chunk at offset
++	  break;
++	}
++      } else {
++        // smaller than the chunk size
++	break;
 +      }
++    }
++
++    // compare the lines 
++    int error=0;
++    char *p1 = header->text + offset;
++    char *p2 = tmp_hdr->text + offset;
++    while(1) {
++      char * const ln1 = strchr(p1, (int)'\n');
++      char * const ln2 = strchr(p2, (int)'\n');
++      if (ln1 && ln2) {
++        // lines exist
++        if (ln1-p1 == ln2-p2 && // same length
++	    0 == strncmp(p1, p2, ln1-p1)) {
++	  // same
++	} else if (p1[0]=='@' && p2[0]=='@' &&
++	           p1[1]=='P' && p2[1]=='P' &&
++	           p1[2]=='G' && p2[2]=='G') {
++	  // ignore differences in @PG lines
++	} else {
++          fprintf(stderr, "(E)     The first difference between the first and current files appears\n");
++          fprintf(stderr, "(E)     current file: %s\n", mt->input_files->fn[fn_i]);
++          fprintf(stderr, "(E)         %s\n", p2);
++          fprintf(stderr, "(E)     first file: %s\n", mt->input_files->fn[0]);
++          fprintf(stderr, "(E)         %s\n", p1);
++	  error = 1;
++          break;
++	}
++      } else if (NULL==ln1 && NULL==ln2) {
++        // cmp done
++        break;
++      } else if (ln1 /* ln2 is null */) {
++        fprintf(stderr, "(E)     The first file has the following line, but the current file does not have it at the same position\n");
++        fprintf(stderr, "(E)         %s\n", p1);
++	error = 1;
++        break;
++      } else /* ln1 is null but ln2 is not null */ {
++        fprintf(stderr, "(E)     The current file has the following line, but the first file does not have it at the same position\n");
++        fprintf(stderr, "(E)         %s\n", p2);
++	error = 1;
++        break;
++      }
++      p1 = ln1 + 1;
++      p2 = ln2 + 1;
++    } // while
++    if (error) {
 +      exit(-1);
 +    }
 +  }
