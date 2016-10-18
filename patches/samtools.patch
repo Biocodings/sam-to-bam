@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-10-04 17:53:56.815050046 +0900
-@@ -0,0 +1,7778 @@
++++ ../files/samtools/bam_sam2bam.c	2016-10-18 17:33:06.148588572 +0900
+@@ -0,0 +1,7813 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -172,8 +172,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 78 $
-+	$Date: 2016-09-29 17:09:01 +0900 (Thu, 29 Sep 2016) $
++	$Rev: 79 $
++	$Date: 2016-10-18 17:33:05 +0900 (Tue, 18 Oct 2016) $
 +
 +	*/
 +
@@ -4919,39 +4919,74 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    && (0 == (flag & BAM_FSECONDARY)) // skip not-primary alignments (e.g., if there are pri1, pri2, and sec1 alignments, either pri1-pri2 or sec1-pri2 are paired, but sec1-pri2 is ignored) 
 +    ){
 +	uint64_t const qnameid = bamptr_get_qnameid(bamp);
-+	uint32_t const idx0 = (qnameid % hash_size);
++	uint32_t const idx0 = qnameid % hash_size;
++/*
++        TODO:
++          Cache collisions rarely happen with our test cases if hash table slots are cleared when mates are found on the slots.
++          However, hash functions should be modified if mate finding is slow because of hash collisions.
++	// uint32_t const idx2 = 7 - (qnameid % 7);	// second hash func
++*/
++	uint32_t const idx2 = 1;			// second hash func
 +	uint32_t idx = idx0;
 +        long cmpxchg = 0;
++//#define PROF_COLLISION
++#if defined(PROF_COLLISION)
++{{{
++long n_collision = 0;
++}}}
++#endif
 +	do {
-+	  bamptr_t * hash = ma[idx];
-+	  if (NULL == hash) {
++	  bamptr_t * hash_ent = ma[idx];
++	  if (NULL == hash_ent) {
 +	    // no bamptr with the same qnameid found until an empty slot is reached
 +            if (__sync_bool_compare_and_swap(&ma[idx],NULL,bamp)) {
 +              cmpxchg = 1;
 +	      break;
 +            }
 +	    // cmpxchg failed -> the slot was updated by other thread 
-+	    hash = ma[idx];
++	    hash_ent = ma[idx];
 +          }
-+	  if (qnameid == bamptr_get_qnameid(hash)) {
++	  if (qnameid == bamptr_get_qnameid(hash_ent)) {
 +            // check if one points to the other
-+	    if(bamptr_get_tid(hash,1) == bamptr_get_tid(bamp,0) && bamptr_get_pos(hash,1) == bamptr_get_pos(bamp,0) &&
-+              bamptr_get_tid(bamp,1) == bamptr_get_tid(hash,0) && bamptr_get_pos(bamp,1) == bamptr_get_pos(hash,0)) { 
-+	      bamptr_set_mate(hash, bamp);
-+	      bamptr_set_mate(bamp, hash);
++	    if(bamptr_get_tid(hash_ent,1) == bamptr_get_tid(bamp,0) && bamptr_get_pos(hash_ent,1) == bamptr_get_pos(bamp,0) &&
++              bamptr_get_tid(bamp,1) == bamptr_get_tid(hash_ent,0) && bamptr_get_pos(bamp,1) == bamptr_get_pos(hash_ent,0)) { 
++              ma[idx] = 0; // clear the slot to reduce collision frequency
++	      bamptr_set_mate(hash_ent, bamp);
++	      bamptr_set_mate(bamp, hash_ent);
 +	    } else {
 +	      char str[256];
 +	      long len;
 +	      get_qname(qnameid, str, sizeof(str), &len);
 +	      fprintf(stderr, "(W) two alignments (with paried flag) have the same qnameid but do not point to each other: %.*s tid1 %d pos1 %d mtid1 %d mpos1 %d *** tid2 %d pos2 %d mtid2 %d mpos2 %d\n", (int)len, str,
-+			bamptr_get_tid(hash,0), bamptr_get_pos(hash,0), bamptr_get_tid(hash,1), bamptr_get_pos(hash,1),
++			bamptr_get_tid(hash_ent,0), bamptr_get_pos(hash_ent,0), bamptr_get_tid(hash_ent,1), bamptr_get_pos(hash_ent,1),
 +			bamptr_get_tid(bamp,0), bamptr_get_pos(bamp,0), bamptr_get_tid(bamp,1), bamptr_get_pos(bamp,1));
 +	    }
 +	    break;
 +	  }
 +	  // collision
-+	  idx = (idx+1 == hash_size ? 0 : idx+1);
++#if defined(PROF_COLLISION)
++{{{
++//char qname[128], qname2[128];
++//bamptr_get_qname(hash_ent, qname, sizeof(qname));
++//bamptr_get_qname(bamp, qname2, sizeof(qname2));
++//fprintf(stderr, "collision %s %s hash_size 0x%x idx0 0x%x idx 0x%x\n", qname, qname2, hash_size, idx0, idx);
++n_collision ++;
++}}}
++#endif
++	  idx = (idx + idx2) % hash_size;
 +	} while (idx != idx0);
++#if defined(PROF_COLLISION)
++{{{
++static uint64_t g_n_collision = 0;
++static uint64_t g_n_hashing = 0;
++__atomic_fetch_add(&g_n_collision, n_collision, __ATOMIC_RELAXED);
++__atomic_fetch_add(&g_n_hashing, 1, __ATOMIC_RELAXED);
++if (0 == (g_n_hashing & 0xffff)) {
++fprintf(stderr, "hashing %ld collision rate %f\n", g_n_hashing, g_n_collision*1.0/g_n_hashing);
++}
++}}}
++#endif
++
 +if (NULL == bamptr_get_mate(bamp) && 0 == cmpxchg) {
 +int i;
 +int found = -1;
@@ -5042,10 +5077,10 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  fm.tid = md_malloc( n_threads*sizeof(fm.tid[0]), mem_findMates1, 0);
 +  const uint64_t length = fm.bucketU_array->max - fm.bucketU_array->min + 1;
 +  fm.chunk_size = (length + n_threads - 1) / n_threads;
-+  fprintf(stderr, "fm: %ld indices per thread (min %ld max %ld n_threads %d) g_qnameid %ld\n", fm.chunk_size, fm.bucketU_array->min, fm.bucketU_array->max, fm.n_threads, g_qnameid);
 +  fm.w = md_malloc( n_threads*sizeof(fm.w[0]), mem_findMates2, 0);
 +  size_t const hash_size = (g_alignments_without_mate_info > g_qnameid ? g_alignments_without_mate_info : g_qnameid);
 +  fm.hash_size = hash_size;
++  fprintf(stderr, "fm: %ld indices per thread (min %ld max %ld n_threads %d) g_qnameid %ld hash_size %ld\n", fm.chunk_size, fm.bucketU_array->min, fm.bucketU_array->max, fm.n_threads, g_qnameid, hash_size);
 +  // bamptr_t **clipped = md_malloc( hash_size * sizeof(bamptr_t*), mem_findMates3, 1);
 +  bamptr_t **unclipped = md_malloc( hash_size * sizeof(bamptr_t*), mem_findMates4, 1);
 +  // fm.mate_array_clipped = clipped;
@@ -7081,7 +7116,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 78 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 79 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
@@ -8122,16 +8157,17 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
      else if (strcmp(argv[1], "fillmd") == 0)    ret = bam_fillmd(argc-1, argv+1);
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/Makefile ../files/samtools/Makefile
 --- 00_svn_r2/samtools-2015-08-19/samtools/Makefile	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/samtools/Makefile	2016-06-24 10:29:33.555974367 +0900
-@@ -21,18 +21,28 @@
++++ ../files/samtools/Makefile	2016-10-18 17:25:39.164207354 +0900
+@@ -21,18 +21,29 @@
  # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  # DEALINGS IN THE SOFTWARE.
  
 +PLATFORM = $(shell uname -m)
-+ifeq ($(wildcard /opt/at9.0),)
++at_gcc := $(word 1, $(wildcard /opt/at1?.?/bin/gcc /opt/at?.?/bin/gcc))
++ifeq ($(at_gcc),)
  CC       = gcc
 +else
-+CC       = /opt/at9.0/bin/gcc
++CC       = $(at_gcc)
 +endif
  CPPFLAGS =
 -CFLAGS   = -g -Wall -O2
@@ -8156,7 +8192,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
              bamtk.o bam2bcf.o bam2bcf_indel.o errmod.o sample.o sam_opts.o \
              cut_target.o phase.o bam2depth.o padding.o bedcov.o bamshuf.o \
              faidx.o dict.o stats.o stats_isize.o bam_flags.o bam_split.o \
-@@ -81,7 +91,8 @@ BUILT_TEST_PROGRAMS = \
+@@ -81,7 +92,8 @@ BUILT_TEST_PROGRAMS = \
  	test/split/test_parse_args \
  	test/vcf-miniview
  
@@ -8166,7 +8202,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
  
  
  # Adjust $(HTSDIR) to point to your top-level htslib directory
-@@ -113,6 +124,8 @@ version.h:
+@@ -113,6 +125,8 @@ version.h:
  	echo '#define SAMTOOLS_VERSION "$(PACKAGE_VERSION)"' > $@
  
  
@@ -8175,7 +8211,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
  .SUFFIXES: .c .o
  
  .c.o:
-@@ -125,7 +138,7 @@ libbam.a:$(LOBJS)
+@@ -125,7 +139,7 @@ libbam.a:$(LOBJS)
  	$(AR) -csru $@ $(LOBJS)
  
  samtools: $(AOBJS) libbam.a $(HTSLIB)
@@ -8184,7 +8220,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
  
  bam_h = bam.h $(htslib_bgzf_h) $(htslib_sam_h)
  bam2bcf_h = bam2bcf.h $(htslib_vcf_h) errmod.h
-@@ -305,3 +318,5 @@ force:
+@@ -305,3 +319,5 @@ force:
  
  .PHONY: all check clean clean-all distclean force install
  .PHONY: lib mostlyclean tags test testclean
