@@ -3,7 +3,7 @@ dist: trusty
 language: c
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y libtcmalloc-minimal4
+  - sudo apt-get install -y libgoogle-perftools-dev
 install:
  - cd ..
  - mkdir -p samtools-2015-08-19
