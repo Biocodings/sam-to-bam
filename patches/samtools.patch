@@ -8107,7 +8107,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
      else if (strcmp(argv[1], "fillmd") == 0)    ret = bam_fillmd(argc-1, argv+1);
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/Makefile ../files/samtools/Makefile
 --- 00_svn_r2/samtools-2015-08-19/samtools/Makefile	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/samtools/Makefile	2016-10-21 18:21:32.457801563 +0900
++++ ../files/samtools/Makefile	2016-10-21 18:49:17.186875217 +0900
 @@ -21,18 +21,29 @@
  # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  # DEALINGS IN THE SOFTWARE.
@@ -8130,7 +8130,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +CFLAGS   = -g -MD -Wall -O2
 +endif
 +LDFLAGS  = 
-+LIBS     = -lm -lz -ldl -ltcmalloc
++LIBS     = -lm -lz -ldl -ltcmalloc_minimal
  
  DFLAGS=     -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -D_CURSES_LIB=1
  LOBJS=      bam_aux.o bam.o bam_import.o sam.o \
