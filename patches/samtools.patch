@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-10-24 17:27:16.277479651 +0900
-@@ -0,0 +1,7797 @@
++++ ../files/samtools/bam_sam2bam.c	2016-10-24 19:29:25.054353831 +0900
+@@ -0,0 +1,7839 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -172,8 +172,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 81 $
-+	$Date: 2016-10-24 17:27:15 +0900 (Mon, 24 Oct 2016) $
++	$Rev: 82 $
++	$Date: 2016-10-24 19:29:24 +0900 (Mon, 24 Oct 2016) $
 +
 +	*/
 +
@@ -1210,9 +1210,9 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static char *inst[ILM_MAX_INST+1];
 +static char *inst18[ILM18_MAX_INST+1];
 +static char *flowcell18[ILM18_MAX_FLOW+1];
-+static volatile long instID;
-+static volatile long inst18ID;
-+static volatile long flowcell18ID;
++//static volatile long instID;
++//static volatile long inst18ID;
++//static volatile long flowcell18ID;
 +
 +static char *getIlluminaStr(enum ilm type, int i){
 +  char **id_array;
@@ -1224,39 +1224,44 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  return id_array[i];
 +}
 +static int getIlluminaFieldID(enum ilm type, char *begin, char *end){
-+  volatile long *id = NULL;
 +  char **id_array = NULL;
 +  uint64_t max = 0;
 +  switch(type){
-+  case ilmInst:		id = &instID;		id_array = inst; 	max = ILM_MAX_LANE; break;
-+  case ilm18Inst:	id = &inst18ID;		id_array = inst18; 	max = ILM18_MAX_LANE; break;
-+  case ilm18Flowcell:	id = &flowcell18ID;	id_array = flowcell18; 	max = ILM18_MAX_FLOW; break;
++  case ilmInst:		id_array = inst; 	max = ILM_MAX_LANE; break;
++  case ilm18Inst:	id_array = inst18; 	max = ILM18_MAX_LANE; break;
++  case ilm18Flowcell:	id_array = flowcell18; 	max = ILM18_MAX_FLOW; break;
 +  }
-+  long const n = *id;
 +  long i;
-+  for(i=0; i<n; i++) {
++  for(i=0; id_array[i] && i<max; i++) {
 +    if(0 == memcmp(begin, id_array[i], end-begin)){
 +      return i;
 +    }
 +  }
 +  // new flowcell. add it to flowcell[flocellID]
-+  long n1 = *id;
-+  if (n1 > max)
-+    return -1; // no more space
++  if (i == max) {
++    fprintf(stderr, "(E) the number of illumina instrument/flowcell IDs exceeds limit %ld\n", max);
++    exit(-1);
++  }
 +  char * const name = md_malloc(end-begin+1, mem_getInstID, 0);
 +  memcpy(name, begin, end-begin);
 +  name[end-begin] = 0;
 +
 +  while(1) {
-+    if (__sync_bool_compare_and_swap(&id_array[n1],NULL,name)) {
-+      *id = n1;
-+      break;
++    if (__sync_bool_compare_and_swap(&id_array[i],NULL,name)) {
++      return i;
 +    }
-+    n1++;
-+    if (n1 > max)
-+      return -1; // no more space
++    // another thread added a new ID. search the array again
++    for(i=0; id_array[i] && i<max; i++) {
++      if(0 == memcmp(begin, id_array[i], end-begin)){
++        return i;
++      }
++    }
++    if (i == max) {
++      fprintf(stderr, "(E) the number of illumina instrument/flowcell IDs exceeds limit %ld\n", max);
++      exit(-1);
++    }
++    // id_array[i] was NULL
 +  }
-+  return n1;
 +}
 +
 +static void hashv2name_illumina(uint64_t v, char *qn, int l_qname) {
@@ -4871,6 +4876,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +#endif
 +
 +static volatile long g_mate_finder_barrier = 0;
++#if 0
 +static int qnameid_cmpfunc(const void *p1, const void *p2){
 +  bamptr_t * const bp1 = *(bamptr_t**)p1;
 +  bamptr_t * const bp2 = *(bamptr_t**)p2;
@@ -4882,6 +4888,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  else /* id1 > id2 */ r = 1;
 +  return r;
 +}
++#endif
 +
 +static void mt_mate_finder__(int tidx, mt_find_mate_t * fm) {
 +
@@ -4961,6 +4968,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  bamptr_t **arr = md_malloc(arr_sz*sizeof(arr[0]), mem_mtMateFinder__, 0);
 +
 +  for(i=tidx; i<hash_size; i+=n_threads) {
++#if 0
 +    bamptr_t *bp, *next;
 +    size_t arr_idx = 0;
 +    for(bp=ma[i]; bp; bp=next) {
@@ -4970,6 +4978,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +        arr_sz = new_sz;
 +      }
 +      next = bamptr_get_mate(bp);
++__builtin_prefetch(&bamptr_get_mate(next), 1 /* rw */, 3 /* temporal locality*/);
 +      bamptr_set_mate(bp, NULL);
 +      arr[arr_idx++] = bp;
 +//{
@@ -4979,7 +4988,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +//}
 +    }
 +
-+    const int use_qsort = 32; // TODO should be tuned
 +    if (arr_idx >= use_qsort) {
 +      qsort(arr, arr_idx, sizeof(arr[0]), qnameid_cmpfunc);
 +      int j;
@@ -4998,7 +5006,40 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +          }
 +        }
 +      } // for j
-+    } else { // qsort
++    } else 
++#endif
++    { // qsort
++#if 1
++      bamptr_t *bp, *next;
++      for(bp=ma[i]; bp; bp=next) {
++        next = bamptr_get_mate(bp);
++        const uint64_t qnameid = bamptr_get_qnameid(bp);
++        bamptr_t *bp2, *next2, *prev2;
++        for(prev2=bp,bp2=next; bp2; prev2=bp2,bp2=next2) {
++          next2 = bamptr_get_mate(bp2);
++__builtin_prefetch(&bamptr_get_mate(next2), 1 /* rw */, 3 /* temporal locality*/);
++          if(qnameid == bamptr_get_qnameid(bp2)) {
++            // unlink bp and bp2
++            if (prev2 == bp) {
++              next = next2;
++            } else {
++              bamptr_set_mate(prev2, next2);
++            }
++            bamptr_set_mate(bp, bp2);
++            bamptr_set_mate(bp2, bp);
++            break;
++          } // if qnameid == qnameid2
++        } // for prev2,bp2
++        if (NULL == bp2) {
++          short const flag = bamptr_get_flag(bp);
++          if ((flag & BAM_FPAIRED) && !(flag & BAM_FMUNMAP)) {
++            char qname[128];
++            bamptr_get_qname(bp, qname, sizeof(qname));
++            fprintf(stderr, "(W) %s (qnameid %ld) is paired (shown in FLAG) but has no pair read in inputs (flag %d)\n", qname, qnameid, flag);
++          }
++        }
++      } // for bp
++#else
 +      int j;
 +      for(j=0; j<arr_idx; j++) {
 +        if(NULL == bamptr_get_mate(arr[j])) {
@@ -5021,6 +5062,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +          } // if mate == NULL
 +        } // if mate == NULL
 +      } // for j
++#endif
 +    }
 +  } // for i
 +  md_free(arr, arr_sz*sizeof(arr[0]), mem_mtMateFinder__);
@@ -7100,7 +7142,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 81 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 82 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
