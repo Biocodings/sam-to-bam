@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-10-26 10:49:06.586614172 +0900
-@@ -0,0 +1,7841 @@
++++ ../files/samtools/bam_sam2bam.c	2016-10-26 18:56:56.835674780 +0900
+@@ -0,0 +1,7876 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -100,6 +100,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static int g_paging = 0;
 +static int g_skip_filter = 0;
 +static int g_unsort = 1;
++static int g_n_inputs = 0;
 +
 +//static int lowmem = 1;
 +/*  CPU assignment - reading file */
@@ -115,7 +116,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +#if defined(CPU_SET_AFFINITY)
 +#define CPU_SET2(i, set)	{CPU_SET(cpu_map->map[i], set);}
-+#define CPU_BLKRD(i)	0	/* a single thread bound to a specific core where no other threads run */
++/* #define CPU_BLKRD(i)	0	* a single thread bound to a specific core where no other threads run */
++#define CPU_BLKRD(i)	(1<g_n_inputs ? ((i)%n_block_reader) : 0)
 +#define CPU_PAGEWR(i)	2	/* a single thread bound to a specific core where no other threads run */
 +#define CPU_BAMWT(i)	3	/* WRITE:1 SYNC:2 */
 +#define N_CORES()	(0==cpu_map->hts_proc_offset ? cpu_map->use_nproc/SMT : (cpu_map->use_nproc - cpu_map->hts_nproc)/SMT + 1/*core0*/)
@@ -144,7 +146,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static int n_physical_cores;
 +static int n_physical_cores_valid;
 +#endif
-+static const int n_block_reader = 1;
++static int n_block_reader = 1;
 +static int n_line_splitter = 1;
 +
 +static int n_sam_parser = 1;
@@ -172,8 +174,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 83 $
-+	$Date: 2016-10-26 10:49:05 +0900 (Wed, 26 Oct 2016) $
++	$Rev: 84 $
++	$Date: 2016-10-26 18:56:56 +0900 (Wed, 26 Oct 2016) $
 +
 +	*/
 +
@@ -334,6 +336,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static long	mem_sortSam2;
 +static long	mem_saveUnmapReads;
 +static long	mem_mtMateFinder__;
++static long	mem_blkrdFreeList2Init;
 +
 +static long md_register_mem_id(const char * mem_id_str);
 +#define REGISTER_MEM_ID(id) id = md_register_mem_id(#id)
@@ -389,6 +392,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +	REGISTER_MEM_ID(mem_sortSam2);
 +	REGISTER_MEM_ID(mem_saveUnmapReads);
 +	REGISTER_MEM_ID(mem_mtMateFinder__);
++	REGISTER_MEM_ID(mem_blkrdFreeList2Init);
 +}
 +
 +static long mem_id = 0; // 0 is not used to detect use of a static id variable (usually zero) before registration
@@ -4127,8 +4131,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +} blkrd_free_list_t;
 +
 +typedef struct {
++  blkrd_free_list_t **blkrd_free_list1 __attribute__((aligned(128))); 
 +  blkrd_free_list_t *blkrd_free_list2 __attribute__((aligned(128))); 
-+  blkrd_free_list_t *blkrd_free_list1 __attribute__((aligned(128))); 
 +} blkrd_free_list2_t;
 +
 +static void md_blkrd_free(blkrd_free_list2_t *l2, blkrd_free_list_t *top, blkrd_free_list_t *bottom);
@@ -5237,27 +5241,32 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +#define DEFAULT_N_LINES		(128) // #lines per DEFAULT_BLKRD_SIZE 
 +static void blkrd_free_list2_init(blkrd_free_list2_t *l2) {
++#if 0 // hoehoe
 +if (n_block_reader != 1) {
 +  fprintf(stderr, "(E) multi-threading is not supported for the free list of blkrd\n");
 +  exit(-1);
 +}
-+  l2->blkrd_free_list1 = NULL;
++#endif
++  l2->blkrd_free_list1 = md_malloc(sizeof(l2->blkrd_free_list1[0])*n_block_reader, mem_blkrdFreeList2Init, 1);
 +  l2->blkrd_free_list2 = NULL;
 +}
 +
-+static blkrd_t *md_blkrd_alloc(blkrd_free_list2_t *l2) {
-+  blkrd_free_list_t * f = l2->blkrd_free_list1;
++static blkrd_t *md_blkrd_alloc(blkrd_free_list2_t *l2, blkrd_free_list_t ** my_fl) {
++  //blkrd_free_list_t * f = l2->blkrd_free_list1;
++  blkrd_free_list_t * f = *my_fl;
 +  blkrd_t *b = NULL;
 +  if (f) {
 +    b = (blkrd_t*)f;
-+    l2->blkrd_free_list1 = f->next;
++    *my_fl = f->next;
 +    PREFETCH_BLKREAD_RW_LOCALITY3(f->next);
++//fprintf(stderr, "alloc1 %p\n", b);
 +  } else {
 +    f = l2->blkrd_free_list2;
 +    if (f) {
 +      if (__sync_bool_compare_and_swap(&l2->blkrd_free_list2,f,NULL)) {
-+        l2->blkrd_free_list1 = f->next;
++        *my_fl = f->next;
 +        b = (blkrd_t*)f;
++//fprintf(stderr, "alloc2 %p\n", b);
 +      }
 +    }
 +  }
@@ -5283,11 +5292,17 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +}
 +
 +static void md_blkrd_free2(blkrd_free_list2_t *l2){
-+  blkrd_free_list_t * lists[2] = { l2->blkrd_free_list1, l2->blkrd_free_list2 };
++  blkrd_free_list_t * p, *next;
++  p = l2->blkrd_free_list2;
++  while(p){
++    next = p->next;
++    md_free(((blkrd_t*)p)->line_pos, sizeof(line_pos_t)+sizeof(((blkrd_t*)p)->line_pos->pos[0])*DEFAULT_N_LINES, mem_blkrdAlloc);
++    md_free(p, sizeof(blkrd_t), mem_blkrdAlloc);
++    p = next;
++  }
 +  int i;
-+  for (i=0; i<2; i++) {
-+    blkrd_free_list_t * p, *next;
-+    p = lists[i];
++  for(i=0; i<n_block_reader; i++) {
++    p = l2->blkrd_free_list1[i];
 +    while(p){
 +      next = p->next;
 +      md_free(((blkrd_t*)p)->line_pos, sizeof(line_pos_t)+sizeof(((blkrd_t*)p)->line_pos->pos[0])*DEFAULT_N_LINES, mem_blkrdAlloc);
@@ -5347,6 +5362,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +      char * const start = q2->block;
 +      char * const end = q2->block + q2->block_len;
 +      line_pos_t * line_pos = q2->line_pos;
++//fprintf(stderr, "%d: blkrd_t %p len %d start %p %.*s\n", myid, q2, q2->block_len, start, 32, start);
 +
 +      // find new line chars
 +      for(p=start; p < end; ) {
@@ -5362,7 +5378,12 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +	  *nl = 0; // sam_parse1() supposes '\0' or '\t' as delimiters of tokens
 +	  p = nl + 1;
 +	} else {
-+	  fprintf(stderr, "(E) a block is not terminated by a new line\n");
++	  fprintf(stderr, "(E) a block (%p len %d) ...", start, q2->block_len);
++          int i;
++          for(i=0; i<32; i++) {
++	    fprintf(stderr, "%c", end[-1-31+i]);
++          }
++          fprintf(stderr, " is terminated by a non-newline (%c 0x%x)\n", *(end-1), *(end-1));
 +	  exit(-1);
 +	}
 +      } /* for p */
@@ -5692,6 +5713,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  blkrd_work_t * const w = (blkrd_work_t*)data;
 +  mt_blkrd_t * const mt = w->mt;
 +  const int myid = w - w->mt->w;
++  register blkrd_free_list_t ** const my_fl = &mt->blkrd_free_list2.blkrd_free_list1[myid];
 +
 +  int partial_line_len = 0;
 +  char partial_line[MAX_LINE_LENGTH];
@@ -5700,7 +5722,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +int n_open = 0;
 +
 +int fn_i;
-+for (fn_i=0; fn_i < mt->input_files->n; fn_i++) {
++for (fn_i=myid; fn_i < mt->input_files->n; fn_i+=n_block_reader) {
 +  char * const fn = mt->input_files->fn[fn_i];
 +
 +struct timeval tm_open;
@@ -5804,7 +5826,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  kstream_t * const ks = (kstream_t*)fp->fp.voidp;
 +  unsigned char * const ks_start = ks->buf + ks->begin;
 +  int const ks_len = ks->end - ks->begin;
-+  blkrd_t *b = md_blkrd_alloc(&mt->blkrd_free_list2);
++  blkrd_t *b = md_blkrd_alloc(&mt->blkrd_free_list2, my_fl);
 +  memcpy(b->block, fp->line.s, fp->line.l);
 +  b->block[fp->line.l] = '\n';
 +  int read_len;
@@ -5842,7 +5864,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  mt_linesplit_enqueue(mt->linesplit, b, myid); 
 +
 +  while(1){
-+    blkrd_t *b = md_blkrd_alloc(&mt->blkrd_free_list2);
++    blkrd_t *b = md_blkrd_alloc(&mt->blkrd_free_list2, my_fl);
 +    b->block_len = 0;
 +    if(partial_line_len){
 +      if (partial_line_len > MAX_LINE_LENGTH) {
@@ -5892,6 +5914,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +        exit(-1);
 +      }
 +      b->block_seqid = block_seqid++;
++//fprintf(stderr, "R%d: blkrd_t %p len %d start %p ..%.*s\n", myid, b, b->block_len, b->block, 32, b->block+b->block_len-32);
 +      mt_linesplit_enqueue(mt->linesplit, b, myid); 
 +
 +      mt->read_bytes += b->block_len;
@@ -5947,7 +5970,9 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  for(j=0; j<n_block_reader; j++){
 +    blkrd->w[j].mt = blkrd;
 +    pthread_create(&blkrd->w[j].tid, &attr, mt_block_reader, &blkrd->w[j]);
-+    if(pthread_setname_np(blkrd->w[j].tid, "block_reader")){}
++    char tn[32];
++    sprintf(tn, "blk_reader-%d-%d\n", j, CPU_BLKRD(j));
++    if(pthread_setname_np(blkrd->w[j].tid, tn)){}
 +#if defined(CPU_SET_AFFINITY)
 +{
 +      cpu_set_t cpuset;
@@ -7144,7 +7169,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 83 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 84 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
@@ -7229,6 +7254,9 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    }
 +
 +#if defined(__powerpc64__)
++    if (g_n_inputs > 1) {
++      n_block_reader = 3; // tuned for GPFS
++    }
 +	  switch(n_physical_cores){
 +	 case 24:  // e.g., power8
 +	    //fixed n_block_reader = 1; // on core0
@@ -7279,11 +7307,16 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +	    n_hash_adder = 15;
 +	  }
 +#endif
++    char *read_str = getenv("N_BLOCKREADER");
 +    char *split_str = getenv("N_LINESPLITTER");
 +    char *parse_str = getenv("N_SAMPARSER");
 +    char *copy_str = getenv("N_BAMCOPIER");
 +    char *hash_str = getenv("N_HASHADDER");
 +    char *endp;
++    if (read_str){
++      n_block_reader = strtol(read_str, &endp, 10);
++      if (*endp != '\0') n_block_reader = 1;
++    }
 +    if (split_str){
 +      n_line_splitter = strtol(split_str, &endp, 10);
 +      if (*endp != '\0') n_line_splitter = 1;
@@ -7844,9 +7877,11 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    input_files_t * const input_files = malloc(sizeof(input_files_t)+sizeof(char*)*(0==nargs ? 1 : nargs));
 +    if (0 == nargs) {
 +      input_files->n = 1;
++      g_n_inputs = 1;
 +      input_files->fn[0] = "-";
 +    } else {
 +      input_files->n = nargs;
++      g_n_inputs = nargs;
 +      int i;
 +      for (i=0; i<nargs; i++) {
 +        input_files->fn[i] = argv[optind+i];
