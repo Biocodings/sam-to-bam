@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2016-10-26 18:56:56.835674780 +0900
-@@ -0,0 +1,7876 @@
++++ ../files/samtools/bam_sam2bam.c	2016-10-31 18:32:09.739945744 +0900
+@@ -0,0 +1,7915 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -77,6 +77,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +#define MAX_LINE_LENGTH		4096	// max length of each line
 +#define MAX_BLOCK_SEQID		(UINT32_MAX>>2)	// 1G 64KB blocks (64TB file size) (the first 2 bits are reserved for bamid_cmpfunc)
++#define my_block_seqid(sid,tid)	(sid<<g_block_reader_id_bits|tid)
 +
 +#if defined(DO_PREFETCH)
 +#define PREFETCH_BLKREAD_RW_LOCALITY3(a)	__builtin_prefetch(a, 1 /* rw */, 3 /* temporal locality*/)
@@ -101,6 +102,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static int g_skip_filter = 0;
 +static int g_unsort = 1;
 +static int g_n_inputs = 0;
++static int g_block_reader_id_bits;
 +
 +//static int lowmem = 1;
 +/*  CPU assignment - reading file */
@@ -174,8 +176,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 84 $
-+	$Date: 2016-10-26 18:56:56 +0900 (Wed, 26 Oct 2016) $
++	$Rev: 85 $
++	$Date: 2016-10-31 18:32:09 +0900 (Mon, 31 Oct 2016) $
 +
 +	*/
 +
@@ -4296,7 +4298,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  if (0 == r_qname) {
 +    r_qname = (b1->core.l_qname - b2->core.l_qname);
 +  }
-+#if defined(DEBUG_POS)
++#if 0 && defined(DEBUG_POS)
 +  if (dump) {
 +    fprintf(stderr, "(I) cmpfunc read %.*s %c %.*s\n",  (int)len1, str1, r_qname==0?'=':(r_qname>0?'<':'>'), (int)len2, str2);
 +  }
@@ -4305,7 +4307,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +//	5. FLAG
 +  int const r_flag = b1->core.flag - b2->core.flag;
-+#if defined(DEBUG_POS)
++#if 0 && defined(DEBUG_POS)
 +  if (dump) {
 +    fprintf(stderr, "(I) cmpfunc flag %u %c %u\n", flag1, r_flag==0?'=':(r_flag>0?'<':'>'), flag2);
 +  }
@@ -5013,6 +5015,30 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    } else 
 +#endif
 +    { // qsort
++#if 0
++int found=0;
++bamptr_t *arr[2];
++{
++bamptr_t *bp;
++char qname[128];
++for(bp=ma[i]; bp; bp=bamptr_get_mate(bp)){
++bamptr_get_qname(bp, qname, sizeof(qname));
++if (0==strcmp("SRR002276.40596309",qname)) {
++  found=1;
++}
++}
++if(found){
++int ii=0;
++fprintf(stderr, "ma[%d] ", i);
++for(bp=ma[i]; bp; bp=bamptr_get_mate(bp)){
++arr[ii++]=bp;
++bamptr_get_qname(bp, qname, sizeof(qname));
++fprintf(stderr, "%s (%ld) - ", qname, bamptr_get_qnameid(bp));
++}
++fprintf(stderr, "\n");
++}
++}
++#endif
 +#if 1
 +      bamptr_t *bp, *next;
 +      for(bp=ma[i]; bp; bp=next) {
@@ -5021,7 +5047,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +        bamptr_t *bp2, *next2, *prev2;
 +        for(prev2=bp,bp2=next; bp2; prev2=bp2,bp2=next2) {
 +          next2 = bamptr_get_mate(bp2);
-+__builtin_prefetch(&bamptr_get_mate(next2), 1 /* rw */, 3 /* temporal locality*/);
++__builtin_prefetch(&(next2->baminfoU[0].mate_bamp), 1 /* rw */, 3 /* temporal locality*/);
 +          if(qnameid == bamptr_get_qnameid(bp2)) {
 +            // unlink bp and bp2
 +            if (prev2 == bp) {
@@ -5045,6 +5071,14 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +          }
 +        }
 +      } // for bp
++#if 0
++if(found){
++int ii;
++for(ii=0; ii<2; ii++) {
++fprintf(stderr, "%p -> %p\n", arr[ii], bamptr_get_mate(arr[ii]));
++}
++}
++#endif
 +#else
 +      int j;
 +      for(j=0; j<arr_idx; j++) {
@@ -5241,12 +5275,6 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +#define DEFAULT_N_LINES		(128) // #lines per DEFAULT_BLKRD_SIZE 
 +static void blkrd_free_list2_init(blkrd_free_list2_t *l2) {
-+#if 0 // hoehoe
-+if (n_block_reader != 1) {
-+  fprintf(stderr, "(E) multi-threading is not supported for the free list of blkrd\n");
-+  exit(-1);
-+}
-+#endif
 +  l2->blkrd_free_list1 = md_malloc(sizeof(l2->blkrd_free_list1[0])*n_block_reader, mem_blkrdFreeList2Init, 1);
 +  l2->blkrd_free_list2 = NULL;
 +}
@@ -5717,7 +5745,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +  int partial_line_len = 0;
 +  char partial_line[MAX_LINE_LENGTH];
-+  uint32_t block_seqid = 0;
++  uint32_t __block_seqid = 0;
 +static double total_open = 0.0;
 +int n_open = 0;
 +
@@ -5856,11 +5884,13 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  memcpy(b->block + fp->line.l + 1, ks_start, read_len);
 +
 +  b->block_len = fp->line.l + 1 + read_len;
-+  if (block_seqid == MAX_BLOCK_SEQID) {
++  const uint32_t block_seqid_m = my_block_seqid(__block_seqid, myid);
++  if (block_seqid_m > MAX_BLOCK_SEQID) {
 +    fprintf(stderr, "(E) the number of 64-KB blocks exceeded the limit %d\n", MAX_BLOCK_SEQID);
 +    exit(-1);
 +  }
-+  b->block_seqid = block_seqid++;
++  b->block_seqid = block_seqid_m;
++  __block_seqid++;
 +  mt_linesplit_enqueue(mt->linesplit, b, myid); 
 +
 +  while(1){
@@ -5909,11 +5939,13 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 +    /* submit a line split request */
 +    if (b->block_len) {
-+      if (block_seqid == UINT32_MAX) {
++      const uint32_t block_seqid_m = my_block_seqid(__block_seqid, myid);
++      if (block_seqid_m > UINT32_MAX) {
 +        fprintf(stderr, "(E) the block count exceeded the limit %d\n", UINT32_MAX);
 +        exit(-1);
 +      }
-+      b->block_seqid = block_seqid++;
++      b->block_seqid = block_seqid_m;
++      __block_seqid++;
 +//fprintf(stderr, "R%d: blkrd_t %p len %d start %p ..%.*s\n", myid, b, b->block_len, b->block, 32, b->block+b->block_len-32);
 +      mt_linesplit_enqueue(mt->linesplit, b, myid); 
 +
@@ -7169,7 +7201,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 84 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 85 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
@@ -7333,10 +7365,17 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +      n_hash_adder = strtol(hash_str, &endp, 10);
 +      if (*endp != '\0') n_hash_adder = 1;
 +    }
-+    fprintf(stderr, "(I) #split %d #parse %d #copy %d #hash %d\n", n_line_splitter, n_sam_parser, n_bam_copier, n_hash_adder);
++    fprintf(stderr, "(I) #read %d #split %d #parse %d #copy %d #hash %d\n", n_block_reader, n_line_splitter, n_sam_parser, n_bam_copier, n_hash_adder);
 +    const int n_threads_fm = cpu_map->use_nproc*7/8; // 8/8=23.5s 0.9=21.6s 7/8(0.87)=21.7s 6/8=22.6s 4/8=26.6s
 +    const int n_threads_ss = cpu_map->use_nproc; //-16;
 +    fprintf(stderr, "(I) #mate %d #sort %d\n", n_threads_fm, n_threads_ss);
++
++    {
++      int k=0;
++      int v = n_block_reader - 1;
++      while(v) { k++; v >>= 1; }
++      g_block_reader_id_bits = k; 
++    } 
 +
 +    //pagefile_t pagefile0[n_bam_copier];
 +    mt_page_write_t *p_page_write = NULL;
@@ -8289,6 +8328,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
  .PHONY: lib mostlyclean tags test testclean
 +
 +-include $(DEPS)
+Binary files 00_svn_r2/samtools-2015-08-19/samtools/.Makefile.swp and ../files/samtools/.Makefile.swp differ
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' 00_svn_r2/samtools-2015-08-19/samtools/sam.c ../files/samtools/sam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/sam.c	2015-08-19 17:55:53.807903000 +0900
 +++ ../files/samtools/sam.c	2015-10-13 18:57:25.755999568 +0900
