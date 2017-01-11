@@ -14,7 +14,7 @@ Step 2. Run the script on the directory where you put the source files and compi
 ----
 ## HOW TO RUN
 
-### Convert the file format from SAM to BAM
+### Convert the file format from SAM to BAM with an index file (.bai)
 
     $ build/samtools/samtools sam2bam -oout.bam in.sam
 
@@ -24,7 +24,7 @@ _Preview of a new feature - processing multiple SAM files without a separate mer
 
 Command-line options:
 
-    out.bam       output BAM file name
+    out.bam       output BAM file name (an index file, out.bam.bai, is generated)
     in.sam　　      input SAM file name
 
 ### Select alignments while converting the file format from SAM to BAM
