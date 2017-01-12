@@ -1,3 +1,12 @@
+## SUMMARY
+The sam2bam is a high-throughput software tool framework called sam2bam that enables users to significantly speed up pre-processing for next-generation sequencing data, especially on single-node multi-core large-memory systems. The sam2bam provides file format conversion from SAM to BAM, as a basic feature. Additional features such as analyzing, filtering, and converting input data are provided by using plug-in tools, e.g., duplicate marking, which can be attached to sam2bam at runtime.
+
+### PERFORMANCE
+
+Whole Exome Sequencing Dataset
+![ibm_markdup performance - whole exome data](http://journals.plos.org/plosone/article/figure/image?download&size=large&id=info:doi/10.1371/journal.pone.0167100.t001 "ibm_markdup performance - WEX data")
+![ibm_markdup performance - whole genome data](http://journals.plos.org/plosone/article/figure/image?download&size=large&id=info:doi/10.1371/journal.pone.0167100.t002 "ibm_markdup performance - WGS data")
+
 ## PAPER
 Ogasawara T, Cheng Y, Tzeng T-HK (2016) Sam2bam: High-Performance Framework for NGS Data Preprocessing Tools. PLoS ONE 11(11): e0167100. doi:[10.1371/journal.pone.0167100](http://dx.doi.org/10.1371/journal.pone.0167100)
 
