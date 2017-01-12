@@ -3,9 +3,7 @@ The sam2bam is a high-throughput software tool framework that enables users to s
 
 ### PERFORMANCE
 
-Whole Exome Sequencing Dataset
-![ibm_markdup performance - whole exome data](http://journals.plos.org/plosone/article/figure/image?download&size=large&id=info:doi/10.1371/journal.pone.0167100.t001 "ibm_markdup performance - WEX data")
-![ibm_markdup performance - whole genome data](http://journals.plos.org/plosone/article/figure/image?download&size=large&id=info:doi/10.1371/journal.pone.0167100.t002 "ibm_markdup performance - WGS data")
+![ibm_markdup performance](https://raw.githubusercontent.com/t-ogasawara/sam-to-bam/gh-pages/sam2bam_perf.png "ibm_markdup performance")
 
 ## PAPER
 Ogasawara T, Cheng Y, Tzeng T-HK (2016) Sam2bam: High-Performance Framework for NGS Data Preprocessing Tools. PLoS ONE 11(11): e0167100. doi:[10.1371/journal.pone.0167100](http://dx.doi.org/10.1371/journal.pone.0167100)
