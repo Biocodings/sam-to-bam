@@ -19,8 +19,8 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' -x '*.swp' -x 'svn-commit.tmp*' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2017-01-11 11:02:37.987908687 +0900
-@@ -0,0 +1,7973 @@
++++ ../files/samtools/bam_sam2bam.c	2017-01-12 18:06:30.181130785 +0900
+@@ -0,0 +1,7977 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
 +
@@ -178,8 +178,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 88 $
-+	$Date: 2017-01-11 11:02:36 +0900 (Wed, 11 Jan 2017) $
++	$Rev: 89 $
++	$Date: 2017-01-12 18:06:29 +0900 (Thu, 12 Jan 2017) $
 +
 +	*/
 +
@@ -900,10 +900,10 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    if (0 == ((b)->core.flag & BAM_FUNMAP)) {
 +      //int64_t const unclip = (int64_t)offset_unclipped_pos - UNCLIPPED_POS_OFFSET - b->core.pos;
 +      int64_t const unclip = (int64_t)unwrap_unclipped_pos(offset_unclipped_pos) - b->core.pos;
-+      if (SHRT_MIN < unclip && unclip <= SHRT_MAX) {
++      if (INT_MIN <= unclip && unclip <= INT_MAX) {
 +        baminfo1->c.unclip  = unclip;
 +      } else {
-+        fprintf(stderr, "(E) clip length %ld cannot be expressed in 16 bits. %u %s %d %d %d\n", unclip, offset_unclipped_pos, bam_get_qname(b), b->core.flag, b->core.tid, b->core.pos);
++        fprintf(stderr, "(E) clip length %ld cannot be expressed in 32 bits. = unwrap(%u)=%d-%d (%s flag %d tid %d pos %d)\n", unclip, offset_unclipped_pos, unwrap_unclipped_pos(offset_unclipped_pos), b->core.pos, bam_get_qname(b), b->core.flag, b->core.tid, b->core.pos);
 +        exit(-1);
 +      }
 +    } else {
@@ -1232,8 +1232,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +#define ILM18_MAX_INST	((1UL<<ILM18_BITS_INST)-1)
 +
 +#define SRA_BITS_ORG	4
-+#define SRA_BITS_ACC	20
-+#define SRA_BITS_SPOT	40
++#define SRA_BITS_ACC	24
++#define SRA_BITS_SPOT	36
 +#define SRA_MAX_ORG	((1UL<<SRA_BITS_ORG)-1)
 +#define SRA_MAX_ACC	((1UL<<SRA_BITS_ACC)-1)
 +#define SRA_MAX_SPOT	((1UL<<SRA_BITS_SPOT)-1)
@@ -1528,17 +1528,21 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +static uint64_t hashv_SRR(char *qn, int l_qname){
 +    char * endp;
 +    int64_t const spot = strtoll(qn+10 /* skip xRR012345. */, &endp, 10);
-+    if (spot > 0xFFFFFFFFFF /* 5 bytes*/) {
-+      fprintf(stderr, "(E) ** change the type of num2 from uint32_t to uint64_t for SRR<num>.<num2>\n");
-+      exit(-1);
-+    }
 +    if (errno == ERANGE) {
 +      fprintf(stderr, "(E) ** too large spot number: %s\n", qn);
 +      exit(-1);
 +    }
++    if (spot > SRA_MAX_SPOT) {
++      fprintf(stderr, "(E) ** spot number %ld is too large (> %ld)\n", spot, SRA_MAX_SPOT);
++      exit(-1);
++    }
 +    int64_t const acc = strtoll(qn+3 /* skip xRR */, &endp, 10);
-+    if (acc > 999999 /* xRR followed by a 6-digit number */ || errno == ERANGE) {
++    if (errno == ERANGE) {
 +      fprintf(stderr, "(E) ** too large accession number: %s\n", qn);
++      exit(-1);
++    }
++    if (acc > SRA_MAX_ACC /* xRR followed by a 6-digit number */) {
++      fprintf(stderr, "(E) ** accession number %ld is too large (>%ld)\n", acc, SRA_MAX_ACC);
 +      exit(-1);
 +    }
 +    uint64_t const hashv = (qn[0]=='S'?0ULL:(qn[0]=='E'?1ULL:2ULL))<<(SRA_BITS_ACC+SRA_BITS_SPOT) 
@@ -7249,7 +7253,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 88 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 89 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
@@ -7996,7 +8000,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' -x '*.swp' -x 'svn-commit.tmp*' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.h ../files/samtools/bam_sam2bam.h
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.h	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.h	2016-12-09 14:23:36.000000000 +0900
++++ ../files/samtools/bam_sam2bam.h	2017-01-12 17:51:21.258556324 +0900
 @@ -0,0 +1,271 @@
 +/*  bam_sam2bam.h
 +
@@ -8069,7 +8073,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  uint8_t  flagL    :4;		//	(4 bits)
 +  uint8_t  flagH;
 +  uint16_t l_data;              //
-+  int16_t  unclip;		//
++  int32_t  unclip;		//
 +  union {                       //*[2]  The same ID for a bamptr for clipped and a bamptr for unclipped that were created for the same read
 +    uint64_t bamid;		// needed for finding the bamptr in the clipped bamptr array that is corresponding to a given unclipped bamptr
 +				//   if unmapped, there is no unclipped bamptr, therefore, bamid is not used.
