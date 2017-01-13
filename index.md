@@ -1,6 +1,17 @@
 ## SUMMARY
 The sam2bam is a high-throughput software tool framework that enables users to significantly speed up pre-processing for next-generation sequencing data, especially on single-node multi-core large-memory systems. The sam2bam provides file format conversion from SAM to BAM, as a basic feature. Additional features such as analyzing, filtering, and converting input data are provided by using plug-in tools, e.g., duplicate marking, which can be attached to sam2bam at runtime.
 
+### FUNCTIONALITIES
+
+| Function                       | Plug-in                   |
+|:-------------------------------|:--------------------------|
+| SAM->BAM conversion            | N/A                       |
+| SAM->BAM + Alignment selection | pre_filter                |
+| SAM->BAM + Alignment sorting   | sort_by_corrdinate        |
+| SAM->BAM + Duplicate marking   | ibm_markdup (POWER8 only) |
+
+See "HOW TO RUN" below for command lines
+
 ### PERFORMANCE
 
 <img src="https://raw.githubusercontent.com/t-ogasawara/sam-to-bam/gh-pages/sam2bam_perf2.png" alt="sam2bam ibm_markdup performance" title="sam2bam ibm_markdup performance" width="949px">
