@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' -x '*.swp' -x 'svn-commit.tmp*' 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c ../files/samtools/bam_sam2bam.c
 --- 00_svn_r2/samtools-2015-08-19/samtools/bam_sam2bam.c	1970-01-01 09:00:00.000000000 +0900
-+++ ../files/samtools/bam_sam2bam.c	2017-01-12 18:06:30.181130785 +0900
++++ ../files/samtools/bam_sam2bam.c	2017-01-13 10:50:53.700592894 +0900
 @@ -0,0 +1,7977 @@
 +#define _BAM_SAM2BAM_C
 +/*  bam_sam2bam.c
@@ -178,8 +178,8 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +/*  bam_sam2bam.c -- format converter framework
 +
 +    Author: Takeshi Ogasawara <takeshi@jp.ibm.com>
-+	$Rev: 89 $
-+	$Date: 2017-01-12 18:06:29 +0900 (Thu, 12 Jan 2017) $
++	$Rev: 90 $
++	$Date: 2017-01-13 10:50:52 +0900 (Fri, 13 Jan 2017) $
 +
 +	*/
 +
@@ -6443,7 +6443,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  int sync_done = 0;
 +  long sync_count;
 +  double sync_time;
-+  const int ba_length = prof_bucket_array_max - prof_bucket_array_min; 
++  const int ba_length = prof_bucket_array_max - prof_bucket_array_min + 1; 
 +  const int ba_min = prof_bucket_array_min;
 +
 +  while(!rd_progress_initialized){
@@ -7253,7 +7253,7 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +    qname_hash_bucket = md_malloc(sizeof(*qname_hash_bucket)*QNAME_HASH_SIZE, mem_bamGetQnameId1, 1);
 +}
 +PROFILE_MEM_INIT();
-+fprintf(stderr, "(I) sam-to-bam $Rev: 89 $\n");
++fprintf(stderr, "(I) sam-to-bam $Rev: 90 $\n");
 +#if !defined(DEBUG_POS)
 +fprintf(stderr, "(I) **** built with no DEBUG_POS feature\n");
 +#endif
@@ -7630,12 +7630,12 @@ diff -uprN -x '*_Jul11' -x 'ibm_*' -x 'Numer*' -x a.out -x '#*#' -x version.h -x
 +  fprintf(stderr, "double-free check done\n");
 +}}}
 +#endif
++prof_bucket_array_min = bucket_array->min;
++prof_bucket_array_max = bucket_array->max;
 +  if (filters.use_baminfo) {
 +    p_prof2 = mt_wrt_throughput_init();
 +  }
 +
-+prof_bucket_array_min = bucket_array->min;
-+prof_bucket_array_max = bucket_array->max;
 +fprintf(stderr, "write index range: %lu - %lu\n", bucket_array->min, bucket_array->max);
 +  size_t mem = 0, n_bam = 0;
 +  const int unsort = g_unsort;
