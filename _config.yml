@@ -1,5 +1,5 @@
 title: sam-to-bam
-description: Converts the format of a genome file from SAM to BAM
+description: A scalable software tool framework for NGS data pre-processing
 google_analytics: 
 show_downloads: true
 theme: jekyll-theme-slate
