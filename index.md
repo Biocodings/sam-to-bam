@@ -77,7 +77,7 @@ Command-line options:
 ### Use GenWQE compression accelerator (OpenPOWER only)
 
 Prerequisites:    
-1. [GenWQE software](https://github.com/ibm-genwqe) is installed on /opt/genwqe.    
+1. [GenWQE software](https://github.com/ibm-genwqe) is installed on the system.    
 2. A GenWQE compression card is installed on the system.
 
     $ export HW_ZLIB=8
