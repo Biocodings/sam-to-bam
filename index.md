@@ -3,12 +3,12 @@ The sam2bam is a high-throughput software tool framework that enables users to s
 
 ### FUNCTIONALITY
 
-| Function                       | Plug-in                   |
-|:-------------------------------|:--------------------------|
-| SAM->BAM conversion            | N/A                       |
-| SAM->BAM + Alignment selection | pre_filter                |
-| SAM->BAM + Alignment sorting   | sort_by_corrdinate        |
-| SAM->BAM + Duplicate marking   | ibm_markdup (POWER8 only) |
+| Function                       | Plug-in                      |
+|:-------------------------------|:-----------------------------|
+| SAM->BAM conversion            | N/A                          |
+| SAM->BAM + Alignment selection | pre_filter                   |
+| SAM->BAM + Alignment sorting   | sort_by_corrdinate           |
+| SAM->BAM + Duplicate marking   | ibm_markdup (OpenPOWER only) |
 
 See "HOW TO RUN" below for command lines
 
@@ -35,7 +35,7 @@ Step 2. Run the script on the directory where you put the source files and compi
 
 ## HOW TO RUN
 
-### Convert the file format from SAM to BAM with an index file (.bai)
+### Convert the file format from SAM to BAM
 
     $ build/samtools/samtools sam2bam -oout.bam in.sam
 
@@ -45,8 +45,8 @@ _Preview of a new feature - processing multiple SAM files without a separate mer
 
 Command-line options:
 
-    out.bam       output BAM file name (an index file, out.bam.bai, is generated)
-    in.sam　　      input SAM file name
+    out.bam       output BAM file name
+    in.sam　　    input SAM file name
 
 ### Select alignments while converting the file format from SAM to BAM
 
@@ -88,7 +88,7 @@ Command-line options:
     HW_ZLIB       Non-zero HW_ZLIB enables H/W acceleration of compression if the accelerator is available in the system
     8             the number of threads that offload compression to the hardware accelerator
 
-### Run duplicate marking for IBM POWER8
+### Run duplicate marking (OpenPOWER only)
 
     $ build/samtools/samtools sam2bam -Fibm_markdup:r -oout.bam in.sam
 
