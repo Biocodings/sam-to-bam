@@ -74,7 +74,7 @@ Command-line options:
 
     -Fsort_by_coordinate:      sort alignments by coordinate
 
-### Use GenWQE compression accelerator on IBM POWER8
+### Use GenWQE compression accelerator (OpenPOWER only)
 
 Prerequisites:    
 1. [GenWQE software](https://github.com/ibm-genwqe) is installed on /opt/genwqe.    
