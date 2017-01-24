@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' -x '*.swp' -x 'svn-commit.tmp*' 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c ../files/htslib/bgzf.c
 --- 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/bgzf.c	2017-01-11 10:44:15.296769979 +0900
++++ ../files/htslib/bgzf.c	2017-01-24 18:29:57.357428089 +0900
 @@ -22,6 +22,7 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
@@ -28,7 +28,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  
  #include <config.h>
  
-@@ -31,11 +32,72 @@
+@@ -31,11 +32,73 @@
  #include <errno.h>
  #include <unistd.h>
  #include <assert.h>
@@ -48,6 +48,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +  int hts_proc_offset;
 +  int hts_nproc;
 +  int n_targets; // header->n_targets
++  int create_bai;
 +  const char *fnout;
 +  int map[];
 +} cpu_map_t;
@@ -101,7 +102,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  #include "htslib/bgzf.h"
  #include "htslib/hfile.h"
  
-@@ -108,6 +170,7 @@ static inline void packInt32(uint8_t *bu
+@@ -108,6 +171,7 @@ static inline void packInt32(uint8_t *bu
      buffer[3] = value >> 24;
  }
  
@@ -109,7 +110,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static BGZF *bgzf_read_init(hFILE *hfpr)
  {
      BGZF *fp;
-@@ -130,6 +193,12 @@ static BGZF *bgzf_read_init(hFILE *hfpr)
+@@ -130,6 +194,12 @@ static BGZF *bgzf_read_init(hFILE *hfpr)
      return fp;
  }
  
@@ -122,7 +123,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  // get the compress level from the mode string: compress_level==-1 for the default level, -2 plain uncompressed
  static int mode2level(const char *__restrict mode)
  {
-@@ -153,6 +222,10 @@ static BGZF *bgzf_write_init(const char 
+@@ -153,6 +223,10 @@ static BGZF *bgzf_write_init(const char 
      }
      fp->is_compressed = 1;
      fp->uncompressed_block = malloc(BGZF_MAX_BLOCK_SIZE);
@@ -133,7 +134,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      fp->compressed_block = malloc(BGZF_MAX_BLOCK_SIZE);
      fp->compress_level = compress_level < 0? Z_DEFAULT_COMPRESSION : compress_level; // Z_DEFAULT_COMPRESSION==-1
      if (fp->compress_level > 9) fp->compress_level = Z_DEFAULT_COMPRESSION;
-@@ -229,6 +302,60 @@ BGZF *bgzf_hopen(hFILE *hfp, const char 
+@@ -229,6 +303,60 @@ BGZF *bgzf_hopen(hFILE *hfp, const char 
      return fp;
  }
  
@@ -194,7 +195,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static int bgzf_compress(void *_dst, int *dlen, void *src, int slen, int level)
  {
      uint32_t crc;
-@@ -285,6 +412,7 @@ static int deflate_block(BGZF *fp, int b
+@@ -285,6 +413,7 @@ static int deflate_block(BGZF *fp, int b
          return -1;
      }
      fp->block_offset = 0;
@@ -202,7 +203,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      return comp_size;
  }
  
-@@ -585,19 +713,313 @@ typedef struct {
+@@ -585,19 +714,313 @@ typedef struct {
      struct bgzf_mtaux_t *mt;
      void *buf;
      int i, errcode, toproc, compress_level;
@@ -517,7 +518,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static int worker_aux(worker_t *w)
  {
      int i, stop = 0;
-@@ -612,7 +1034,7 @@ static int worker_aux(worker_t *w)
+@@ -612,7 +1035,7 @@ static int worker_aux(worker_t *w)
      w->errcode = 0;
      for (i = w->i; i < w->mt->curr; i += w->mt->n_threads) {
          int clen = BGZF_MAX_BLOCK_SIZE;
@@ -526,7 +527,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
              w->errcode |= BGZF_ERR_ZLIB;
          memcpy(w->mt->blk[i], w->buf, clen);
          w->mt->len[i] = clen;
-@@ -620,40 +1042,577 @@ static int worker_aux(worker_t *w)
+@@ -620,40 +1043,583 @@ static int worker_aux(worker_t *w)
      __sync_fetch_and_add(&w->mt->proc_cnt, 1);
      return 0;
  }
@@ -618,9 +619,12 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +  mtaux_t *mt = ((worker_t*)data)->mt;
 +
 +  // .bai init
-+  off_t const offset0_H = (htell(mt->fp->fp)<<16);
-+  uint16_t const offset0_L = 0;
-+  hts_idx_t * const bai = hts_idx_init(mt->cpu_map->n_targets, HTS_FMT_BAI, offset0_H|offset0_L, 14, 5);
++  hts_idx_t * bai = NULL;
++  if (mt->cpu_map->create_bai) {
++    off_t const offset0_H = (htell(mt->fp->fp)<<16);
++    uint16_t const offset0_L = 0;
++    bai = hts_idx_init(mt->cpu_map->n_targets, HTS_FMT_BAI, offset0_H|offset0_L, 14, 5);
++  }
 +
 +  while(1) {
 +    int64_t wr = mt->write_id;
@@ -647,23 +651,26 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +    len = - len;
 +
 +    // .bai push bam records except the last one
-+    memcpy_info_array_t * const mia = mt->memcpy_info_array[i];
-+    memcpy_info_t *mi = mia->info, *mi_last;
-+    off_t const offset_H = (htell(mt->fp->fp)<<16);
-+    while ( 1 ) {
-+      memcpy_info_t *mi_next = (memcpy_info_t*)((char*)mi + sizeof(memcpy_info_ptr_t));
-+      uint16_t const offset_L = ((mi->block_offset + mi->len)&0xFFFF);
-+      if (!mi_next->is_end) {
-+        int ret = hts_idx_push(bai, mi->tid, mi->pos, mi->endpos, offset_H|offset_L, (0 == mi->unmap));
-+        if (ret < 0) {
-+          fprintf(stderr, "(E) hts_idx_push failed\n");
-+          exit(-1);
++    memcpy_info_t *mi_last = NULL;
++    if (mt->cpu_map->create_bai) {
++      memcpy_info_array_t * const mia = mt->memcpy_info_array[i];
++      memcpy_info_t *mi = mia->info;
++      off_t const offset_H = (htell(mt->fp->fp)<<16);
++      while ( 1 ) {
++        memcpy_info_t *mi_next = (memcpy_info_t*)((char*)mi + sizeof(memcpy_info_ptr_t));
++        uint16_t const offset_L = ((mi->block_offset + mi->len)&0xFFFF);
++        if (!mi_next->is_end) {
++          int ret = hts_idx_push(bai, mi->tid, mi->pos, mi->endpos, offset_H|offset_L, (0 == mi->unmap));
++          if (ret < 0) {
++            fprintf(stderr, "(E) hts_idx_push failed\n");
++            exit(-1);
++          }
++        } else {
++          mi_last = mi;
++          break;
 +        }
-+      } else {
-+        mi_last = mi;
-+        break;
++        mi = mi_next;
 +      }
-+      mi = mi_next;
 +    }
 +
 +    if (hwrite(mt->fp->fp, mt->blk[i], len) != len) {
@@ -671,7 +678,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +      break;
 +    }
 +    // .bai push the last bam record
-+    {
++    if (mt->cpu_map->create_bai) {
 +      off_t const offset_H = (htell(mt->fp->fp)<<16);
 +      uint16_t const offset_L = 0; // ((mi->block_offset + mi->len)&0xFFFF);
 +      int ret = hts_idx_push(bai, mi_last->tid, mi_last->pos, mi_last->endpos, offset_H|offset_L, (0 == mi_last->unmap));
@@ -686,7 +693,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +
 +mt_writer2_done:
 +  // .bai finish
-+  {
++  if (mt->cpu_map->create_bai) {
 +    hts_idx_finish(bai, htell(mt->fp->fp));
 +    int ret = hts_idx_save(bai, mt->cpu_map->fnout, HTS_FMT_BAI);
 +    if (ret < 0) {
@@ -1110,7 +1117,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      fp->mt = mt;
      return 0;
  }
-@@ -666,16 +1625,67 @@ static void mt_destroy(mtaux_t *mt)
+@@ -666,16 +1632,67 @@ static void mt_destroy(mtaux_t *mt)
      mt->done = 1; mt->proc_cnt = 0;
      pthread_cond_broadcast(&mt->cv);
      pthread_mutex_unlock(&mt->lock);
@@ -1179,7 +1186,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static void mt_queue(BGZF *fp)
  {
      mtaux_t *mt = fp->mt;
-@@ -685,7 +1695,21 @@ static void mt_queue(BGZF *fp)
+@@ -685,7 +1702,21 @@ static void mt_queue(BGZF *fp)
      fp->block_offset = 0;
      ++mt->curr;
  }
@@ -1201,7 +1208,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
  static int mt_flush_queue(BGZF *fp)
  {
      int i;
-@@ -710,12 +1734,18 @@ static int mt_flush_queue(BGZF *fp)
+@@ -710,12 +1741,18 @@ static int mt_flush_queue(BGZF *fp)
      mt->curr = 0;
      return (fp->errcode == 0)? 0 : -1;
  }
@@ -1220,7 +1227,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      }
      else return bgzf_flush(fp);
  }
-@@ -739,8 +1769,13 @@ int bgzf_flush(BGZF *fp)
+@@ -739,8 +1776,13 @@ int bgzf_flush(BGZF *fp)
      if (!fp->is_write) return 0;
  #ifdef BGZF_MT
      if (fp->mt) {
@@ -1234,7 +1241,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
      }
  #endif
      while (fp->block_offset > 0) {
-@@ -788,6 +1823,100 @@ ssize_t bgzf_write(BGZF *fp, const void 
+@@ -788,6 +1830,100 @@ ssize_t bgzf_write(BGZF *fp, const void 
      }
      return length - remaining;
  }
