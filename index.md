@@ -35,6 +35,24 @@ Step 2. Run the script on the directory where you put the source files and compi
 
 ## HOW TO RUN
 
+### Run duplicate marking (OpenPOWER only)
+
+    $ build/samtools/samtools sam2bam -Fibm_markdup:r -oout.bam in.sam
+
+Command-line options:
+
+    -Fibm_markdup:  Mark duplicates
+    -Fibm_markdup:r Remove duplicates
+    -p              Enable the storage mode to reduce memory footprint (default: the memory mode)
+                    In the storage mode, sam2bam does not keep converted BAM records in physical 
+                    memory but saves them to temporary files. The files are created on the current
+                    directory by default. The I/O performance of the device where the files are 
+                    created is critical for sam2bam.
+    BAM_PAGEFILE    Change the directory where sam2bam creates temporary files in the storage mode
+                    The current directory is not on a fast device that you have (e.g., mounted at 
+                    /fast), BAM_PAGEFILE=/fast/bf specifies the fast device to be used for temporary 
+                    files.
+
 ### Convert the file format from SAM to BAM
 
     $ build/samtools/samtools sam2bam -oout.bam in.sam
@@ -87,19 +105,3 @@ Command-line options:
 
     HW_ZLIB       Non-zero HW_ZLIB enables H/W acceleration of compression if the accelerator is available in the system
     8             the number of threads that offload compression to the hardware accelerator
-
-### Run duplicate marking (OpenPOWER only)
-
-    $ build/samtools/samtools sam2bam -Fibm_markdup:r -oout.bam in.sam
-
-Command-line options:
-
-    -Fibm_markdup:                       Mark duplicates
-    -Fibm_markdup:r                      Remove duplicates
-    -p                                   Enable the storage mode to reduce memory footprint (default: the memory mode)
-                                         In the storage mode, sam2bam does not keep converted BAM records in physical memory
-                                         but saves them to temporary files. The files are created on the current directory by default. 
-                                         The I/O performance of the device where the files are created is critical for sam2bam.
-    BAM_PAGEFILE                         Change the directory where sam2bam creates temporary files in the storage mode
-                                         The current directory is not on a fast device that you have (e.g., mounted at /fast),
-                                         BAM_PAGEFILE=/fast/bf specifies the fast device to be used for temporary files.
