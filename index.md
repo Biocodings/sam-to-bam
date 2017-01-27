@@ -43,8 +43,8 @@ Command-line options:
 
     -Fibm_markdup:  Mark duplicates
     -Fibm_markdup:r Remove duplicates
-    -p              Enable the storage mode to reduce memory footprint (default: 
-                    the memory mode)
+    -p              Enable the storage mode to reduce memory footprint 
+                    (default: the memory mode)
                     In the storage mode, sam2bam does not keep converted BAM 
                     records in physical memory but saves them to temporary 
                     files. The files are created on the current directory by
