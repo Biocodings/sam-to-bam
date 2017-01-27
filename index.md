@@ -49,7 +49,7 @@ Command-line options:
                     records in physical memory but saves them to temporary 
                     files. The files are created on the current directory by
                     default. The I/O performance of the device where the 
-                    files are created is critical for sam2bam.
+                    files are created is critical for the storage mode.
     BAM_PAGEFILE    Change the directory where sam2bam creates temporary files 
                     in the storage mode
                     The current directory is not on a fast device that you have 
