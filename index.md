@@ -35,6 +35,19 @@ Step 2. Run the script on the directory where you put the source files and compi
 
 ## HOW TO RUN
 
+### Convert the file format from SAM to BAM
+
+    $ build/samtools/samtools sam2bam -oout.bam in.sam
+
+_Preview of a new feature - processing multiple SAM files without a separate merge step (the performance will be improved in a future release)_
+
+    $ build/samtools/samtools sam2bam -oout.bam in1.sam in2.sam in3.sam ...
+
+Command-line options:
+
+    out.bam       output BAM file name
+    in.sam　　    input SAM file name
+
 ### Run duplicate marking (OpenPOWER only)
 
     $ build/samtools/samtools sam2bam -Fibm_markdup:r -oout.bam in.sam
@@ -55,19 +68,6 @@ Command-line options:
                     The current directory is not on a fast device that you have 
                     (e.g., mounted at /fast), BAM_PAGEFILE=/fast/bf specifies 
                     the fast device to be used for temporary files.
-
-### Convert the file format from SAM to BAM
-
-    $ build/samtools/samtools sam2bam -oout.bam in.sam
-
-_Preview of a new feature - processing multiple SAM files without a separate merge step (the performance will be improved in a future release)_
-
-    $ build/samtools/samtools sam2bam -oout.bam in1.sam in2.sam in3.sam ...
-
-Command-line options:
-
-    out.bam       output BAM file name
-    in.sam　　    input SAM file name
 
 ### Select alignments while converting the file format from SAM to BAM
 
