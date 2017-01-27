@@ -48,13 +48,13 @@ Command-line options:
                     In the storage mode, sam2bam does not keep converted BAM 
                     records in physical memory but saves them to temporary files. 
                     The files are created on the current directory by default. 
-                    The I/O performance of the device where the files are created
-                    is critical for sam2bam.
+                    The I/O performance of the device where the files are 
+                    created is critical for sam2bam.
     BAM_PAGEFILE    Change the directory where sam2bam creates temporary files 
                     in the storage mode
                     The current directory is not on a fast device that you have 
-                    (e.g., mounted at /fast), BAM_PAGEFILE=/fast/bf specifies the
-                    fast device to be used for temporary files.
+                    (e.g., mounted at /fast), BAM_PAGEFILE=/fast/bf specifies 
+                    the fast device to be used for temporary files.
 
 ### Convert the file format from SAM to BAM
 
