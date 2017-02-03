@@ -19,7 +19,7 @@
 # DEALINGS IN THE SOFTWARE.
 diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' -x .git -x .svn -x '*.MIT' -x '*.swp' -x 'svn-commit.tmp*' 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c ../files/htslib/bgzf.c
 --- 00_svn_r2/samtools-2015-08-19/htslib/bgzf.c	2015-08-19 17:55:53.807903000 +0900
-+++ ../files/htslib/bgzf.c	2017-01-24 18:29:57.357428089 +0900
++++ ../files/htslib/bgzf.c	2017-02-03 11:00:34.314520013 +0900
 @@ -22,6 +22,7 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
@@ -922,7 +922,7 @@ diff -uprN -x 'ibm_*' -x 'Numer*' -x version.h -x q -x '*~' -x '*.c.*' -x '*.a' 
 +#endif
 +#endif
 +    n_threads = cpu_map->use_nproc - SMT /* core0 is dedicated to main & sync threads */ - 1 /* the last thread on coreN-1 is dedicated to write thread */
-+    		- hw_zlib;
++    		- (-1 == hw_zlib ? 0 : hw_zlib);
      mt->n_threads = n_threads;
 -    mt->n_blks = n_threads * n_sub_blks;
 +    mt->n_blks = (n_threads + hw_zlib) * n_sub_blks;
